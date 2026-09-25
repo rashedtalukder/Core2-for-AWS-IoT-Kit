@@ -4,7 +4,8 @@
 #include <stdint.h>
 #include "esp_err.h"
 typedef struct test_rmt_channel *rmt_channel_handle_t;
-typedef struct test_rmt_encoder *rmt_encoder_handle_t;
+typedef struct rmt_encoder_t rmt_encoder_t;
+typedef rmt_encoder_t *rmt_encoder_handle_t;
 #define GPIO_NUM_25 25
 #define RMT_CLK_SRC_DEFAULT 0
 typedef struct {

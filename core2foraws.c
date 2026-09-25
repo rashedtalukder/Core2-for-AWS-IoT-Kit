@@ -65,27 +65,9 @@ esp_err_t core2foraws_init( void )
     return err;
   }
 
-  /* Display (ILI9342C LCD + FT6336 touch). Depends on the AXP192 having
-   * raised the LCD logic/backlight rails and released the LCD/touch reset
-   * line (AXP192 GPIO4), and on the internal I2C bus for the touch
-   * controller. */
-#ifdef CONFIG_SOFTWARE_DISPLAY_SUPPORT
-  err = core2foraws_display_init();
-  if( err != ESP_OK )
-    ESP_LOGE( _TAG, "\tError initializing display. Error 0x%x", err );
-  ret |= err;
-#endif
-
-  /* Virtual touch buttons. These read the FT6336 touch controller, so the
-   * display/touch stack must already be initialized. */
-#ifdef CONFIG_SOFTWARE_BUTTON_SUPPORT
-  err = core2foraws_button_init();
-  if( err != ESP_OK )
-    ESP_LOGE( _TAG, "\tError initializing button. Error 0x%x", err );
-  ret |= err;
-#endif
-
-  /* Internal I2C sensors. All share the bus brought up above. */
+  /* Internal I2C sensors. All share the bus brought up above. They run while
+   * the LCD and touch controllers boot after the reset released by
+   * power_init, so their init time overlaps that start-up window. */
 #ifdef CONFIG_SOFTWARE_MOTION_SUPPORT
   err = core2foraws_motion_init();
   if( err != ESP_OK )
@@ -102,13 +84,34 @@ esp_err_t core2foraws_init( void )
 
   /* ATECC608 secure element. It shares the internal I2C bus and has
    * non-standard wake/sleep timing, so it is initialized after the other
-   * I2C peripherals. */
+   * fixed I2C sensors. */
 #ifdef CONFIG_SOFTWARE_CRYPTO_SUPPORT
   err = core2foraws_crypto_init();
   if( err != ESP_OK )
     ESP_LOGE( _TAG,
               "\tError initializing secure element (crypto chip). Error 0x%x",
               err );
+  ret |= err;
+#endif
+
+  /* Display (ILI9342C LCD + FT6336 touch). Depends on the AXP192 having
+   * raised the LCD logic/backlight rails and released the LCD/touch reset
+   * line (AXP192 GPIO4), and on the internal I2C bus for the touch
+   * controller. It waits out whatever remains of the controllers' start-up
+   * time. */
+#ifdef CONFIG_SOFTWARE_DISPLAY_SUPPORT
+  err = core2foraws_display_init();
+  if( err != ESP_OK )
+    ESP_LOGE( _TAG, "\tError initializing display. Error 0x%x", err );
+  ret |= err;
+#endif
+
+  /* Virtual touch buttons. These read the FT6336 touch controller, so the
+   * display/touch stack must already be initialized. */
+#ifdef CONFIG_SOFTWARE_BUTTON_SUPPORT
+  err = core2foraws_button_init();
+  if( err != ESP_OK )
+    ESP_LOGE( _TAG, "\tError initializing button. Error 0x%x", err );
   ret |= err;
 #endif
 

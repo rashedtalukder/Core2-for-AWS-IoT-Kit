@@ -35,6 +35,7 @@
 #include <stdatomic.h>
 #include <sdkconfig.h>
 #include <esp_log.h>
+#include <esp_timer.h>
 #include <esp_wifi.h>
 #include <esp_event.h>
 #include <nvs_flash.h>
@@ -54,6 +55,11 @@
 #define PROV_POP_STR_SIZE    9
 #define QRCODE_BASE_URL "https://espressif.github.io/esp-jumpstart/qrcode.html"
 
+/* The first reconnect is immediate; later ones back off 1, 2, 4 ... 32 s so
+ * an absent AP does not keep the radio busy (and competing with BLE). */
+#define WIFI_RECONNECT_BASE_MS   1000U
+#define WIFI_RECONNECT_MAX_SHIFT 5U
+
 static const char *_TAG = "CORE2FORAWS_WIFI";
 
 EventGroupHandle_t wifi_event_group = NULL;
@@ -64,6 +70,8 @@ static bool _wifi_initialized = false;
 static atomic_bool _wifi_started;
 static atomic_bool _scan_only;
 static atomic_bool _provisioning_active;
+static esp_timer_handle_t _reconnect_timer = NULL;
+static atomic_uint _reconnect_failures;
 static StaticSemaphore_t _wifi_lifecycle_mutex_storage;
 static SemaphoreHandle_t _wifi_lifecycle_mutex = NULL;
 static atomic_uchar _wifi_lifecycle_mutex_state;
@@ -183,6 +191,8 @@ static void _on_got_ip( void *arg, esp_event_base_t event_base, int32_t event_id
 
         ESP_LOGI( _TAG, "\tGot IPv4 address: " IPSTR, IP2STR( &event->ip_info.ip ) );
 
+        atomic_store( &_reconnect_failures, 0 );
+
         xEventGroupClearBits( wifi_event_group, WIFI_DISCONNECTED_BIT );
         xEventGroupClearBits( wifi_event_group, WIFI_CONNECTING_BIT );
         xEventGroupSetBits( wifi_event_group, WIFI_CONNECTED_BIT );
@@ -201,13 +211,10 @@ static void _on_wifi_connect( void *esp_netif, esp_event_base_t event_base, int3
     ESP_LOGI( _TAG, "\tConnected" );
 }
 
-static void _on_wifi_disconnect( void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data )
+static void _wifi_reconnect( void )
 {
-    ESP_LOGI( _TAG, "\tDisconnected, attempting to reconnect..." );
-    xEventGroupClearBits( wifi_event_group, WIFI_CONNECTED_BIT );
-    xEventGroupSetBits( wifi_event_group, WIFI_DISCONNECTED_BIT );
+    if( atomic_load( &_scan_only ) || !atomic_load( &_wifi_started ) ) return;
 
-    if (atomic_load(&_scan_only)) return;
     esp_err_t err = esp_wifi_connect();
     if ( err != ESP_OK )
     {
@@ -216,6 +223,55 @@ static void _on_wifi_disconnect( void *arg, esp_event_base_t event_base, int32_t
     }
 
     xEventGroupSetBits( wifi_event_group, WIFI_CONNECTING_BIT );
+}
+
+static void _on_reconnect_timer( void *arg )
+{
+    ( void )arg;
+    _wifi_reconnect();
+}
+
+static void _on_wifi_disconnect( void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data )
+{
+    const wifi_event_sta_disconnected_t *event = event_data;
+    xEventGroupClearBits( wifi_event_group, WIFI_CONNECTED_BIT );
+    xEventGroupSetBits( wifi_event_group, WIFI_DISCONNECTED_BIT );
+
+    if( atomic_load( &_scan_only ) || !atomic_load( &_wifi_started ) )
+    {
+        ESP_LOGI( _TAG, "\tDisconnected (reason %u)",
+                  event != NULL ? event->reason : 0 );
+        return;
+    }
+
+    unsigned int failures = atomic_fetch_add( &_reconnect_failures, 1 );
+    uint32_t delay_ms = 0;
+    if( failures > 0 )
+    {
+        unsigned int shift = failures - 1;
+        if( shift > WIFI_RECONNECT_MAX_SHIFT ) shift = WIFI_RECONNECT_MAX_SHIFT;
+        delay_ms = WIFI_RECONNECT_BASE_MS << shift;
+    }
+
+    /* wifi_err_reason_t values are listed in esp_wifi_types.h */
+    ESP_LOGW( _TAG, "\tDisconnected (reason %u, RSSI %d dBm), reconnect attempt %u in %lu ms",
+              event != NULL ? event->reason : 0,
+              event != NULL ? event->rssi : 0,
+              failures + 1, ( unsigned long ) delay_ms );
+
+    if( delay_ms == 0 || _reconnect_timer == NULL )
+    {
+        _wifi_reconnect();
+        return;
+    }
+
+    ( void )esp_timer_stop( _reconnect_timer );
+    esp_err_t err = esp_timer_start_once( _reconnect_timer,
+                                          ( uint64_t ) delay_ms * 1000U );
+    if( err != ESP_OK )
+    {
+        ESP_LOGE( _TAG, "\tFailed to schedule reconnect: 0x%x", err );
+    }
 }
 
 static esp_err_t _device_service_name_set( void )
@@ -302,6 +358,17 @@ static esp_err_t _core2foraws_wifi_init_locked( void )
     }
 
     /* Initialize Wi-Fi including netif with default config */
+    const esp_timer_create_args_t reconnect_timer_args = {
+        .callback = _on_reconnect_timer,
+        .name = "wifiReconnect",
+    };
+    err = esp_timer_create( &reconnect_timer_args, &_reconnect_timer );
+    if ( err != ESP_OK )
+    {
+        _reconnect_timer = NULL;
+        goto cleanup;
+    }
+
     _wifi_netif = esp_netif_create_default_wifi_sta();
     if ( _wifi_netif == NULL )
     {
@@ -357,6 +424,12 @@ cleanup:
         esp_wifi_clear_default_wifi_driver_and_handlers( _wifi_netif );
         esp_netif_destroy( _wifi_netif );
         _wifi_netif = NULL;
+    }
+
+    if ( _reconnect_timer != NULL )
+    {
+        esp_timer_delete( _reconnect_timer );
+        _reconnect_timer = NULL;
     }
 
     vEventGroupDelete( wifi_event_group );
@@ -621,6 +694,15 @@ static esp_err_t _core2foraws_wifi_deinit_locked( void )
         esp_netif_destroy( _wifi_netif );
         _wifi_netif = NULL;
     }
+
+    if ( _reconnect_timer != NULL )
+    {
+        ( void )esp_timer_stop( _reconnect_timer );
+        err = esp_timer_delete( _reconnect_timer );
+        if ( err != ESP_OK && ret == ESP_OK ) ret = err;
+        _reconnect_timer = NULL;
+    }
+    atomic_store( &_reconnect_failures, 0 );
 
     if ( wifi_event_group != NULL )
     {

@@ -17,7 +17,7 @@ writes SD/NVS test data and changes peripheral state. It is not a security
 boundary and does not make flashing safe by itself. Building does not flash or
 execute the tests. Normal BSP consumers never compile this application's main.
 
-The test app pins Espressif32 7.1.2 / ESP-IDF 6.1.0 and uses its own
+The test app pins Espressif32 7.1.3 / ESP-IDF 6.1.0 and uses its own
 [sdkconfig.defaults](sdkconfig.defaults). It finds the BSP through
 `EXTRA_COMPONENT_DIRS`; no temporary factory-project edits are needed.
 Managed downloads, generated configurations, and build output are ignored by Git.

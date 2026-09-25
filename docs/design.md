@@ -117,12 +117,12 @@ the I2C bus). Each step is compiled in only if its Kconfig flag is enabled.
 ```mermaid
 graph TD
     S1["1. Internal I2C bus<br/>(GPIO21/22) — FATAL if it fails"] --> S2
-    S2["2. Power / AXP192 PMU<br/>(rails, 5V boost, resets) - FATAL if it fails"] --> S3
-    S3["3. Display<br/>(LCD + touch)"] --> S4
-    S4["4. Buttons<br/>(virtual touch zones)"] --> S5
-    S5["5. Motion / MPU6886 IMU"] --> S6
-    S6["6. RTC / BM8563"] --> S7
-    S7["7. Crypto / ATECC608<br/>(shared-bus wake token)"] --> S8
+    S2["2. Power / AXP192 PMU<br/>(rails, 5V boost, releases LCD/touch reset) - FATAL if it fails"] --> S3
+    S3["3. Motion / MPU6886 IMU"] --> S4
+    S4["4. RTC / BM8563"] --> S5
+    S5["5. Crypto / ATECC608<br/>(shared-bus wake token)"] --> S6
+    S6["6. Display<br/>(LCD + touch; waits out the rest of the 300 ms boot)"] --> S7
+    S7["7. Buttons<br/>(virtual touch zones)"] --> S8
     S8["8. RGB LED chain<br/>(needs 5V boost)"] --> S9
     S9["9. Wi-Fi stack setup<br/>(network resources, last)"]
 ```
@@ -137,11 +137,24 @@ graph TD
   the SD card, the vibration motor, and the 5V boost for the LED strip. It also
   drives the shared LCD/touch reset line. Bringing it up early means downstream
   peripherals have stable power before they are probed.
-- **Crypto (ATECC608) comes after the other I2C devices.** Each secure-element
+- **Fixed I2C sensors initialize while the display boots.** The PMU releases
+  the LCD/touch reset and records the time instead of blocking. The FT6336
+  reference gives no start-up timing, so the BSP keeps a conservative 300 ms.
+  IMU, RTC and secure-element init run in that window, and
+  `core2foraws_display_init()` then waits only for whatever remains (via
+  `core2foraws_power_lcd_ready_wait()`). The IMU likewise does not block for
+  its gyroscope start-up (up to 100 ms); the first accelerometer or gyroscope
+  read waits out any remainder.
+- **Crypto (ATECC608) comes after the IMU and RTC.** Each secure-element
   command starts with an I2C general-call wake token. The common I2C wrapper
   serializes that token with every other internal-bus transaction and treats
   the secure element's expected wake-token NACK as success; init order alone is
-  not relied on for runtime bus safety.
+  not relied on for runtime bus safety. Ordinary traffic to other internal
+  devices also wakes the ATECC608 (any SDA-low stretch of 60 us or more), which
+  silently starts its ~1.36 s watchdog; a command landing in the last ~40 ms
+  then fails with status 0xEE. The HAL therefore sends Idle (which keeps
+  TempKey) immediately before every wake token, so each command sequence
+  starts a full watchdog period.
 - **Later failures are aggregated.** After the I2C bus and PMU, each step's result is
   accumulated (`ret |= err`) and normalized to `ESP_FAIL`. A bad peripheral
   does not stop later modules from being attempted. The logs identify each
@@ -188,13 +201,25 @@ distinct on purpose:
 
 | Bus | Address | Device / role | Owner and initialization |
 | --- | --- | --- | --- |
-| **Internal** (`CORE2FORAWS_I2C_INTERNAL`, I2C_NUM_0), SDA=GPIO21, SCL=GPIO22 | `0x34` | AXP192 PMU | power, automatic |
-| Internal | `0x38` | FT6336 touch controller | display, automatic |
-| Internal | `0x51` | BM8563 RTC | rtc, automatic |
-| Internal | `0x68` | MPU6886 IMU | motion, automatic |
-| Internal | `0x35` | ATECC608 Trust&GO secure element | crypto, automatic and initialized last among fixed I2C devices; board-fixed address at 100 kHz |
+| **Internal** (`CORE2FORAWS_I2C_INTERNAL`, I2C_NUM_0), SDA=GPIO21, SCL=GPIO22 | `0x34` | AXP192 PMU | power, automatic; 400 kHz |
+| Internal | `0x38` | FT6336 touch controller | display, automatic; 400 kHz |
+| Internal | `0x51` | BM8563 RTC | rtc, automatic; 400 kHz |
+| Internal | `0x68` | MPU6886 IMU | motion, automatic; 400 kHz |
+| Internal | `0x35` | ATECC608 Trust&GO secure element | crypto, automatic after the IMU and RTC (touch follows with the display); board-fixed address at 100 kHz |
 | Internal | application-defined | Add-on J3 internal-I2C socket | application; shares the same mutex and pull-ups |
 | **External / Port A** (`CORE2FORAWS_I2C_EXTERNAL`, I2C_NUM_1), SDA=GPIO32, SCL=GPIO33 | application-defined | External Grove "unit" accessories only | expansion ports, on demand |
+
+Clock speed is set per device, not per bus: each transfer runs at the speed
+its device was registered with. The fixed devices that support fast mode
+use 400 kHz so each transfer holds the shared mutex for less time; the
+ATECC608 stays at its required 100 kHz. A J3 accessory limited to 100 kHz
+is unaffected because it is addressed at its own registered speed.
+
+Failed transfers to fixed internal devices other than the ATECC608 are
+logged by the I2C layer with a microsecond timestamp and the time since the
+last ATECC608 general-call wake token. The token is deliberately NACKed, so
+this shows whether a failure (for example an intermittent RTC NACK)
+correlates with it.
 
 A common beginner mistake is to assume the IMU or secure element is on the
 external bus. **They are not** — they reach the internal bus through the M5Bus
@@ -667,7 +692,7 @@ less.
 | Layer | Supported environment | How it is validated |
 | --- | --- | --- |
 | BSP component | ESP-IDF v6.1.0 | Current factory and hardware smoke builds; v5.3/v6.0 are historical validations, not requalified after this update |
-| Application integration | PlatformIO `espressif32` v7.1.2 (ESP-IDF v6.1.0) | Pinned by the factory consumer and standalone opt-in hardware test app; the BSP root remains an ESP-IDF component |
+| Application integration | PlatformIO `espressif32` v7.1.3 (ESP-IDF v6.1.0) | Pinned by the factory consumer and standalone opt-in hardware test app; the BSP root remains an ESP-IDF component |
 | ESP-IDF v4.x | Not supported | Some legacy conditional branches remain, but v5-only driver APIs and component names define the actual minimum |
 
 - **Component, not standalone application:** this repository has no top-level
@@ -698,11 +723,11 @@ less.
   ESP-IDF components and is intentionally not attempted as an in-place tweak.
 - **Managed dependencies** ([idf_component.yml](../idf_component.yml)) are
   pinned to the validated revisions: `esp-cryptoauthlib` `3.7.9~2`,
-  `network_provisioning` `1.2.4`, `qrcode` `0.2.0`, LVGL `9.5.0`,
+  `network_provisioning` `1.2.5`, `qrcode` `0.2.0`, LVGL `9.6.0~1`,
   `esp_lvgl_port` `2.9.0`, `esp_lcd_touch` `1.2.1`, the FT5x06-compatible
   touch driver `1.1.1` for FT6336, and `esp_lcd_ili9341` `2.1.0` for the
   ILI9342C-compatible command set.
-  These are the latest direct stable releases verified on 2026-09-07.
+  These are the latest direct stable releases verified on 2026-09-24.
   Transitive cJSON resolves to `1.7.19~2`. The LCD driver's `cmake_utilities`
   requirement is `0.*`, so `0.5.3` is retained instead of incompatible `1.1.1`.
 

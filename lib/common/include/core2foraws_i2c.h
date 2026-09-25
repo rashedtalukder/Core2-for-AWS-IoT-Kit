@@ -161,6 +161,22 @@ esp_err_t core2foraws_i2c_write( core2foraws_i2c_port_t port,
 esp_err_t core2foraws_i2c_lock( core2foraws_i2c_port_t port );
 
 /**
+ * @brief Acquire the I2C bus mutex, giving up after about @p timeout_ms.
+ *
+ * Same as core2foraws_i2c_lock() but with a caller-chosen wait and no error
+ * log on timeout. Use it on latency-sensitive paths that would rather skip
+ * a transfer than stall behind another bus user. The wait is rounded up to
+ * whole RTOS ticks, so it lasts at least @p timeout_ms and at most one extra
+ * tick.
+ *
+ * @param[in] port       The I2C bus port.
+ * @param[in] timeout_ms Minimum wait in milliseconds; 0 does not block.
+ * @return ESP_OK on success, ESP_ERR_TIMEOUT if the mutex stayed busy.
+ */
+esp_err_t core2foraws_i2c_lock_timeout( core2foraws_i2c_port_t port,
+                                       uint32_t timeout_ms );
+
+/**
  * @brief Release the I2C bus mutex.
  *
  * @param[in] port The I2C bus port.

@@ -10,11 +10,13 @@
 #include <stdatomic.h>
 
 #include <esp_log.h>
+#include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <driver/i2c_master.h>
 
+#include "core2foraws_common.h"
 #include "core2foraws_i2c.h"
 
 static const char *_TAG = "CORE2FORAWS_I2C";
@@ -41,6 +43,11 @@ static const char *_TAG = "CORE2FORAWS_I2C";
  * multi-byte payload. */
 #define I2C_WRITE_STACK_BUF_SIZE 32
 
+/* The ATECC608 wakes on a deliberately NACKed write to the general-call
+ * address and NACKs its own address while busy, so neither is reported. */
+#define I2C_GENERAL_CALL_ADDRESS 0x00
+#define I2C_ATECC608_ADDRESS     0x35
+
 typedef struct core2foraws_i2c_device_node
 {
     i2c_master_dev_handle_t handle;
@@ -57,6 +64,7 @@ typedef struct
     SemaphoreHandle_t mutex;
     atomic_uchar mutex_state;
     core2foraws_i2c_device_node_t *devices;
+    int64_t last_general_call_us;
 } core2foraws_i2c_bus_state_t;
 
 enum
@@ -132,6 +140,43 @@ static core2foraws_i2c_device_node_t *_i2c_device_find_by_handle(
     }
 
     return NULL;
+}
+
+/* Called with the bus lock held after every managed transfer. Failures on
+ * the internal bus are logged with the time since the last ATECC608 wake
+ * token so a NACK can be correlated with (or ruled out from) that token. */
+static void _i2c_transfer_note( core2foraws_i2c_port_t port,
+                                const core2foraws_i2c_device_node_t *node,
+                                esp_err_t err )
+{
+    core2foraws_i2c_bus_state_t *state = &_bus_state[ port ];
+    int64_t now_us = esp_timer_get_time();
+
+    if( node->address == I2C_GENERAL_CALL_ADDRESS )
+    {
+        state->last_general_call_us = now_us;
+        return;
+    }
+
+    if( err == ESP_OK || port != CORE2FORAWS_I2C_INTERNAL ||
+        node->address == I2C_ATECC608_ADDRESS )
+    {
+        return;
+    }
+
+    if( state->last_general_call_us != 0 )
+    {
+        ESP_LOGW( _TAG, "Transfer to 0x%02x failed: %s (t=%lld us, %lld us after last ATECC608 wake token)",
+                  node->address, esp_err_to_name( err ),
+                  ( long long ) now_us,
+                  ( long long )( now_us - state->last_general_call_us ) );
+    }
+    else
+    {
+        ESP_LOGW( _TAG, "Transfer to 0x%02x failed: %s (t=%lld us, no ATECC608 wake token yet)",
+                  node->address, esp_err_to_name( err ),
+                  ( long long ) now_us );
+    }
 }
 
 esp_err_t core2foraws_i2c_init( core2foraws_i2c_port_t port )
@@ -431,8 +476,10 @@ esp_err_t core2foraws_i2c_read( core2foraws_i2c_port_t port,
         return ESP_ERR_TIMEOUT;
     }
 
-    if( _bus_state[ port ].handle == NULL ||
-        _i2c_device_find_by_handle( &_bus_state[ port ], dev_handle, NULL ) == NULL )
+    const core2foraws_i2c_device_node_t *node = _bus_state[ port ].handle == NULL
+        ? NULL
+        : _i2c_device_find_by_handle( &_bus_state[ port ], dev_handle, NULL );
+    if( node == NULL )
     {
         core2foraws_i2c_unlock( port );
         return ESP_ERR_INVALID_STATE;
@@ -469,6 +516,7 @@ esp_err_t core2foraws_i2c_read( core2foraws_i2c_port_t port,
                                            I2C_XFER_TIMEOUT_MS );
     }
 
+    _i2c_transfer_note( port, node, err );
     core2foraws_i2c_unlock( port );
     return err;
 }
@@ -497,8 +545,10 @@ esp_err_t core2foraws_i2c_write( core2foraws_i2c_port_t port,
         return ESP_ERR_TIMEOUT;
     }
 
-    if( _bus_state[ port ].handle == NULL ||
-        _i2c_device_find_by_handle( &_bus_state[ port ], dev_handle, NULL ) == NULL )
+    const core2foraws_i2c_device_node_t *node = _bus_state[ port ].handle == NULL
+        ? NULL
+        : _i2c_device_find_by_handle( &_bus_state[ port ], dev_handle, NULL );
+    if( node == NULL )
     {
         core2foraws_i2c_unlock( port );
         return ESP_ERR_INVALID_STATE;
@@ -570,8 +620,27 @@ esp_err_t core2foraws_i2c_write( core2foraws_i2c_port_t port,
         }
     }
 
+    _i2c_transfer_note( port, node, err );
     core2foraws_i2c_unlock( port );
     return err;
+}
+
+esp_err_t core2foraws_i2c_lock_timeout( core2foraws_i2c_port_t port,
+                                       uint32_t timeout_ms )
+{
+    if( port >= CORE2FORAWS_I2C_PORT_MAX ||
+        atomic_load( &_bus_state[ port ].mutex_state ) != I2C_MUTEX_READY )
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    /* Round up so a short wait is not truncated to a tick that expires
+     * almost immediately; 0 stays non-blocking. */
+    TickType_t ticks = timeout_ms == 0 ? 0
+                                       : CORE2FORAWS_DELAY_MS_TO_TICKS( timeout_ms );
+    return xSemaphoreTakeRecursive( _bus_state[ port ].mutex, ticks ) == pdTRUE
+               ? ESP_OK
+               : ESP_ERR_TIMEOUT;
 }
 
 esp_err_t core2foraws_i2c_lock( core2foraws_i2c_port_t port )
@@ -582,8 +651,11 @@ esp_err_t core2foraws_i2c_lock( core2foraws_i2c_port_t port )
         return ESP_ERR_INVALID_ARG;
     }
 
-    if( xSemaphoreTakeRecursive( _bus_state[ port ].mutex,
-                                 pdMS_TO_TICKS( I2C_LOCK_TIMEOUT_MS ) ) != pdTRUE )
+    esp_err_t err = xSemaphoreTakeRecursive( _bus_state[ port ].mutex,
+                                             pdMS_TO_TICKS( I2C_LOCK_TIMEOUT_MS ) ) == pdTRUE
+                        ? ESP_OK
+                        : ESP_ERR_TIMEOUT;
+    if( err == ESP_ERR_TIMEOUT )
     {
         TaskHandle_t holder = xSemaphoreGetMutexHolder( _bus_state[ port ].mutex );
         ESP_LOGE( _TAG,
@@ -592,10 +664,9 @@ esp_err_t core2foraws_i2c_lock( core2foraws_i2c_port_t port )
                   holder != NULL ? pcTaskGetName( holder ) : "none",
                   holder != NULL ? ( int )eTaskGetState( holder ) : -1,
                   holder != NULL ? ( unsigned )uxTaskPriorityGet( holder ) : 0 );
-        return ESP_ERR_TIMEOUT;
     }
 
-    return ESP_OK;
+    return err;
 }
 
 esp_err_t core2foraws_i2c_unlock( core2foraws_i2c_port_t port )

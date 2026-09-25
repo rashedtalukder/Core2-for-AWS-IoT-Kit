@@ -12,6 +12,9 @@ static bool fail_remove;
 static void (*before_lock)(void);
 static uint8_t last_tx[128];
 static size_t last_tx_size;
+static TickType_t expected_lock_ticks = pdMS_TO_TICKS(1000);
+
+int64_t esp_timer_get_time(void) { return 1; }
 
 SemaphoreHandle_t xSemaphoreCreateRecursiveMutexStatic(StaticSemaphore_t *storage)
 {
@@ -20,7 +23,7 @@ SemaphoreHandle_t xSemaphoreCreateRecursiveMutexStatic(StaticSemaphore_t *storag
 }
 BaseType_t xSemaphoreTakeRecursive(SemaphoreHandle_t mutex, TickType_t timeout)
 {
-    assert(timeout == pdMS_TO_TICKS(1000));
+    assert(timeout == expected_lock_ticks);
     if (before_lock != NULL)
     {
         void (*hook)(void) = before_lock;
@@ -160,7 +163,22 @@ int main(void)
     assert(!device_storage.active);
     assert(core2foraws_i2c_deinit(CORE2FORAWS_I2C_INTERNAL) == ESP_ERR_NOT_SUPPORTED);
     assert(core2foraws_i2c_init((core2foraws_i2c_port_t)-1) == ESP_ERR_INVALID_ARG);
+
+    expected_lock_ticks = CORE2FORAWS_DELAY_MS_TO_TICKS(20);
+    assert(core2foraws_i2c_lock_timeout(port, 20) == ESP_OK);
+    expected_lock_ticks = pdMS_TO_TICKS(1000);
+    assert(core2foraws_i2c_unlock(port) == ESP_OK);
+
+    assert(core2foraws_i2c_init(port) == ESP_OK);
+    i2c_master_dev_handle_t wake = NULL;
+    assert(core2foraws_i2c_device_add(port, 0x00, 100000, &wake) == ESP_OK);
+    uint8_t token = 0;
+    assert(_bus_state[port].last_general_call_us == 0);
+    assert(core2foraws_i2c_write(port, wake, CORE2FORAWS_I2C_NO_REG, &token, 1) == ESP_OK);
+    assert(_bus_state[port].last_general_call_us == 1);
+    close_bus();
+
     assert(_bus_state[port].mutex->depth == 0);
-    puts("I2C lifetime, retry, transfer, and close-interleaving tests passed");
+    puts("I2C lifetime, retry, transfer, close-interleaving, bounded lock and wake-token timing tests passed");
     return 0;
 }

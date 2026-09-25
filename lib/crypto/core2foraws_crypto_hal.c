@@ -34,18 +34,40 @@ static i2c_master_dev_handle_t _atecc_wake_dev = NULL;
  * element wakes from the resulting low interval and intentionally NACKs the
  * transfer. Keeping the wake inside the I2C driver preserves its GPIO routing
  * and serializes the token with every other device on the shared bus.
+ *
+ * Other traffic on the shared bus also wakes the chip whenever SDA stays low
+ * for 60 us or more, which ordinary transfers do. The chip then sits awake
+ * with its ~1.3 s watchdog running unseen, and a command landing near expiry
+ * fails (status 0xEE). An Idle command first puts such a chip back to idle,
+ * keeping TempKey, so the wake below always starts a full watchdog period.
+ * A chip that is already idle or asleep NACKs the Idle, which is expected.
  */
 static esp_err_t _atecc_wake_token( void )
 {
-    if( _atecc_wake_dev == NULL )
+    if( _atecc_wake_dev == NULL || _atecc_dev == NULL )
     {
         return ESP_ERR_INVALID_STATE;
     }
 
+    esp_err_t err = core2foraws_i2c_lock( CORE2FORAWS_I2C_INTERNAL );
+    if( err != ESP_OK )
+    {
+        return err;
+    }
+
+    const uint8_t idle_word_address = 0x02;
+    ( void )core2foraws_i2c_write( CORE2FORAWS_I2C_INTERNAL, _atecc_dev,
+        CORE2FORAWS_I2C_NO_REG, &idle_word_address, 1 );
+
     const uint8_t wake_token = 0;
-    esp_err_t err = core2foraws_i2c_write( CORE2FORAWS_I2C_INTERNAL,
+    err = core2foraws_i2c_write( CORE2FORAWS_I2C_INTERNAL,
         _atecc_wake_dev, CORE2FORAWS_I2C_NO_REG, &wake_token, 1 );
-    return err == ESP_OK || err == ESP_ERR_INVALID_RESPONSE ? ESP_OK : err;
+    esp_err_t unlock_err = core2foraws_i2c_unlock( CORE2FORAWS_I2C_INTERNAL );
+    if( err == ESP_ERR_INVALID_RESPONSE )
+    {
+        err = ESP_OK;
+    }
+    return err != ESP_OK ? err : unlock_err;
 }
 
 /**
@@ -172,10 +194,11 @@ ATCA_STATUS __wrap_hal_i2c_send( ATCAIface iface, uint8_t word_address,
         write_size += txlength;
     }
 
-    uint8_t *write_buffer = malloc( write_size );
-    if( !write_buffer )
+    /* Word address plus the largest ATECC608 command packet */
+    uint8_t write_buffer[ 1 + ATCA_CMD_SIZE_MAX ];
+    if( write_size > sizeof( write_buffer ) )
     {
-        return ATCA_COMM_FAIL;
+        return ATCA_BAD_PARAM;
     }
 
     write_buffer[0] = word_address;
@@ -189,8 +212,6 @@ ATCA_STATUS __wrap_hal_i2c_send( ATCAIface iface, uint8_t word_address,
 
     ESP_LOGD( TAG, "txdata: %p , txlength: %d error: %s", txdata, txlength,
         esp_err_to_name( err ) );
-
-    free( write_buffer );
 
     if( err == ESP_OK )
     {

@@ -154,6 +154,11 @@ esp_err_t core2foraws_sd_mount( void );
  * acquiring locks. Close failures are returned. If closing times out on SPI,
  * the BSP retains the file and retries its close before the next SD operation.
  *
+ * @note @p message may be in PSRAM. Data passes through the C library and
+ * FAT file-system buffers before reaching the SD driver, so a PSRAM buffer
+ * reads at about the same speed as an internal one (measured on this board:
+ * roughly 650 vs 730 KB/s for a 32 KB file).
+ *
  * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK          : Success
  *  - ESP_ERR_TIMEOUT : Shared SPI bus or SD lock was not free in time.
@@ -216,6 +221,18 @@ esp_err_t core2foraws_sd_read( const char *file_name, char *message, size_t to_r
  * wrote_length counts bytes accepted by stdio, not durable bytes after an error.
  * A SPI timeout during close retains the file for retry before the next SD
  * operation, including unmount; no additional file is opened in the meantime.
+ *
+ * @note @p message may be in PSRAM. Data passes through the C library and
+ * FAT file-system buffers before reaching the SD driver, so a PSRAM buffer
+ * writes at about the same speed as an internal one (measured on this board:
+ * roughly 260 vs 240-270 KB/s for a 32 KB file).
+ *
+ * @note The SD card shares its SPI bus with the display, and the time the
+ * card spends busy programming flash counts against the display's
+ * `CORE2FORAWS_SPI_LOCK_TIMEOUT_MS` wait. The BSP releases the bus between
+ * 4 KB chunks, but long or frequent writes can still delay or drop UI
+ * frames; write in the background at a modest rate if the UI must stay
+ * smooth.
  *
  * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK          : Success

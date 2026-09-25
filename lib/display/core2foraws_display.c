@@ -44,9 +44,12 @@
 #include <esp_lcd_touch_ft5x06.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
+#include <esp_timer.h>
 #include <esp_lvgl_port.h>
+#include <freertos/FreeRTOS.h>
 
 #include "core2foraws_common.h"
+#include "core2foraws_power.h"
 #include "core2foraws_display.h"
 
 /* ── Hardware constants (from schema.yml) ── */
@@ -83,6 +86,14 @@ _Static_assert( LCD_DRAW_BUF_BYTES <= CORE2FORAWS_SPI_MAX_TRANSFER_BYTES,
 /* FT6336U touch controller on internal I2C bus */
 #define TOUCH_INT_GPIO      GPIO_NUM_39
 #define TOUCH_I2C_XFER_TIMEOUT_MS 100
+/* The LVGL task skips a touch sample rather than stall behind another bus
+ * user; the next input period retries. Other callers use the normal lock. */
+#define TOUCH_I2C_LOCK_TIMEOUT_MS 10
+/* LVGL (33 ms) and the button task (20 ms) both poll touch. A sample this
+ * fresh is shared instead of re-read, roughly halving FT6336 transfers. */
+#define TOUCH_SAMPLE_REUSE_US ( 15 * 1000 )
+/* FT6336U reports at most two simultaneous points (datasheet section 14.1) */
+#define TOUCH_MAX_POINTS    2
 
 static const char *_TAG = "CORE2FORAWS_DISPLAY";
 
@@ -99,6 +110,11 @@ static bool                      _lvgl_initialized = false;
 static atomic_bool               _flush_holds_spi_lock;
 static atomic_bool               _touch_interrupt_pending;
 static atomic_bool               _touch_contact_active;
+
+static portMUX_TYPE                _touch_sample_lock = portMUX_INITIALIZER_UNLOCKED;
+static esp_lcd_touch_point_data_t  _touch_sample[ TOUCH_MAX_POINTS ];
+static uint8_t                     _touch_sample_count;
+static int64_t                     _touch_sample_us; /* 0: no sample yet */
 
 typedef struct
 {
@@ -209,6 +225,10 @@ static esp_err_t _touch_io_new(
 static void _display_flush( lv_display_t *display, const lv_area_t *area,
                             uint8_t *color_map )
 {
+    /* Swap before taking the shared bus so the SD card does not wait on it.
+     * A skipped transfer below discards the buffer either way. */
+    lv_draw_sw_rgb565_swap( color_map, lv_area_get_size( area ) );
+
     if( core2foraws_common_spi_semaphore == NULL ||
         xSemaphoreTake( core2foraws_common_spi_semaphore,
                         pdMS_TO_TICKS( CORE2FORAWS_SPI_LOCK_TIMEOUT_MS ) ) !=
@@ -220,7 +240,6 @@ static void _display_flush( lv_display_t *display, const lv_area_t *area,
     }
 
     atomic_store( &_flush_holds_spi_lock, true );
-    lv_draw_sw_rgb565_swap( color_map, lv_area_get_size( area ) );
     esp_err_t err = esp_lcd_panel_draw_bitmap( _panel_handle,
         area->x1, area->y1, area->x2 + 1, area->y2 + 1, color_map );
     if( err != ESP_OK )
@@ -293,15 +312,51 @@ static bool _display_flush_done( esp_lcd_panel_io_handle_t panel_io,
     return task_woken == pdTRUE;
 }
 
+/* Copies the cached sample out. Call with _touch_sample_lock held. */
+static uint8_t _touch_sample_copy( esp_lcd_touch_point_data_t *points,
+                                   uint8_t max_points )
+{
+    uint8_t count = _touch_sample_count < max_points ? _touch_sample_count
+                                                     : max_points;
+    memcpy( points, _touch_sample, count * sizeof( *points ) );
+    return count;
+}
+
+/* Returns true and fills the outputs when the cached sample is fresh. */
+static bool _touch_sample_reuse( esp_lcd_touch_point_data_t *points,
+                                 uint8_t *point_count, uint8_t max_points )
+{
+    bool fresh = false;
+    int64_t now_us = esp_timer_get_time();
+    taskENTER_CRITICAL( &_touch_sample_lock );
+    if( _touch_sample_us != 0 &&
+        now_us - _touch_sample_us < TOUCH_SAMPLE_REUSE_US )
+    {
+        *point_count = _touch_sample_copy( points, max_points );
+        fresh = true;
+    }
+    taskEXIT_CRITICAL( &_touch_sample_lock );
+    return fresh;
+}
+
 static esp_err_t _display_touch_read( esp_lcd_touch_point_data_t *points,
                                       uint8_t *point_count,
-                                      uint8_t max_points )
+                                      uint8_t max_points, bool bounded_wait )
 {
     if( points == NULL || point_count == NULL || max_points == 0 )
     {
         return ESP_ERR_INVALID_ARG;
     }
-    esp_err_t err = core2foraws_i2c_lock( COMMON_I2C_INTERNAL );
+
+    if( _touch_sample_reuse( points, point_count, max_points ) )
+    {
+        return ESP_OK;
+    }
+
+    esp_err_t err = bounded_wait
+        ? core2foraws_i2c_lock_timeout( COMMON_I2C_INTERNAL,
+                                        TOUCH_I2C_LOCK_TIMEOUT_MS )
+        : core2foraws_i2c_lock( COMMON_I2C_INTERNAL );
     if( err != ESP_OK )
     {
         return err;
@@ -313,11 +368,32 @@ static esp_err_t _display_touch_read( esp_lcd_touch_point_data_t *points,
         return unlock_err != ESP_OK ? unlock_err : ESP_ERR_INVALID_STATE;
     }
 
+    /* Another poller may have refreshed the sample while this one waited. */
+    if( _touch_sample_reuse( points, point_count, max_points ) )
+    {
+        return core2foraws_i2c_unlock( COMMON_I2C_INTERNAL );
+    }
+
+    esp_lcd_touch_point_data_t fresh[ TOUCH_MAX_POINTS ];
+    uint8_t fresh_count = 0;
     err = esp_lcd_touch_read_data( _touch_handle );
     if( err == ESP_OK )
     {
-        err = esp_lcd_touch_get_data( _touch_handle, points, point_count,
-                                      max_points );
+        err = esp_lcd_touch_get_data( _touch_handle, fresh, &fresh_count,
+                                      TOUCH_MAX_POINTS );
+    }
+    if( err == ESP_OK )
+    {
+        if( fresh_count > TOUCH_MAX_POINTS )
+        {
+            fresh_count = TOUCH_MAX_POINTS;
+        }
+        taskENTER_CRITICAL( &_touch_sample_lock );
+        memcpy( _touch_sample, fresh, fresh_count * sizeof( fresh[ 0 ] ) );
+        _touch_sample_count = fresh_count;
+        _touch_sample_us = esp_timer_get_time();
+        *point_count = _touch_sample_copy( points, max_points );
+        taskEXIT_CRITICAL( &_touch_sample_lock );
     }
 
     esp_err_t unlock_err = core2foraws_i2c_unlock( COMMON_I2C_INTERNAL );
@@ -348,7 +424,23 @@ static void _lvgl_touch_read( lv_indev_t *indev, lv_indev_data_t *data )
         return;
     }
 
-    esp_err_t err = _display_touch_read( &point, &point_count, 1 );
+    esp_err_t err = _display_touch_read( &point, &point_count, 1, true );
+    if( err == ESP_ERR_TIMEOUT )
+    {
+        /* Bus busy: repeat the last known state so a held touch is not
+         * reported as a release, and retry on the next input period. */
+        taskENTER_CRITICAL( &_touch_sample_lock );
+        point_count = _touch_sample_copy( &point, 1 );
+        taskEXIT_CRITICAL( &_touch_sample_lock );
+        atomic_store( &_touch_contact_active, true );
+        if( point_count > 0 )
+        {
+            data->point.x = point.x;
+            data->point.y = point.y;
+            data->state = LV_INDEV_STATE_PRESSED;
+        }
+        return;
+    }
     if( err != ESP_OK )
     {
         atomic_store( &_touch_contact_active, true );
@@ -487,7 +579,7 @@ esp_err_t core2foraws_display_touch_data_get(
         return ESP_OK;
     }
 
-    return _display_touch_read( points, point_count, max_points );
+    return _display_touch_read( points, point_count, max_points, false );
 }
 
 
@@ -571,6 +663,10 @@ static esp_err_t _init_touch( void )
     {
         atomic_store( &_touch_interrupt_pending, true );
         _touch_contact_active = false;
+        taskENTER_CRITICAL( &_touch_sample_lock );
+        _touch_sample_count = 0;
+        _touch_sample_us = 0;
+        taskEXIT_CRITICAL( &_touch_sample_lock );
     }
     return err;
 }
@@ -616,6 +712,7 @@ esp_err_t core2foraws_display_init( void )
     }
 
     /* ── 1. LCD panel via the shared SPI bus ── */
+    core2foraws_power_lcd_ready_wait();
     err = _init_lcd_panel();
     if( err != ESP_OK )
     {

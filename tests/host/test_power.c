@@ -12,7 +12,7 @@ static unsigned int lock_depth;
 esp_err_t core2foraws_i2c_device_add(core2foraws_i2c_port_t port, uint16_t address,
                                   uint32_t speed, i2c_master_dev_handle_t *device)
 {
-    assert(port == CORE2FORAWS_I2C_INTERNAL && address == 0x34 && speed == 100000);
+    assert(port == CORE2FORAWS_I2C_INTERNAL && address == 0x34 && speed == 400000);
     *device = (i2c_master_dev_handle_t)registers;
     return ESP_OK;
 }
@@ -44,7 +44,10 @@ esp_err_t core2foraws_i2c_unlock(core2foraws_i2c_port_t port)
     return ESP_OK;
 }
 esp_err_t core2foraws_common_error(esp_err_t error) { return error == ESP_OK ? ESP_OK : ESP_FAIL; }
-void vTaskDelay(TickType_t ticks) { (void)ticks; }
+static int64_t fake_time_us;
+int64_t esp_timer_get_time(void) { return fake_time_us; }
+/* vTaskDelay( n ) may return up to one tick early; model the worst case. */
+void vTaskDelay(TickType_t ticks) { fake_time_us += (int64_t)(ticks - 1) * 10000; }
 
 int main(void)
 {
@@ -52,6 +55,14 @@ int main(void)
     registers[0x26] = 0x68;
     assert(core2foraws_power_init() == ESP_OK);
     assert((registers[0x12] & 1) != 0 && (registers[0x26] & 0x7f) == 0x6a);
+    /* Reset low for >= 100 ms, but init no longer blocks for the 300 ms boot. */
+    assert(fake_time_us >= 100000 && fake_time_us < 200000);
+    int64_t released_us = fake_time_us;
+    core2foraws_power_lcd_ready_wait();
+    assert(fake_time_us - released_us >= 300000);
+    int64_t after_wait = fake_time_us;
+    core2foraws_power_lcd_ready_wait();
+    assert(fake_time_us == after_wait);
     unsigned int before = bus_writes;
     assert(core2foraws_power_init() == ESP_OK && bus_writes == before);
     assert(core2foraws_power_rail_state_set(POWER_RAIL_ESP32, false) == ESP_ERR_NOT_SUPPORTED);
@@ -94,6 +105,6 @@ int main(void)
     registers[0x32] = 0x46;
     assert(core2foraws_power_axp_reg_set(0x32, 0xc6) == ESP_OK);
     assert(core2foraws_power_axp_write(0x32, &snapshot[0x32]) == ESP_OK);
-    puts("MCU rail guard, recoverable shutdown, startup, and peripheral-control tests passed");
+    puts("MCU rail guard, recoverable shutdown, startup, LCD start-up overlap, and peripheral-control tests passed");
     return 0;
 }

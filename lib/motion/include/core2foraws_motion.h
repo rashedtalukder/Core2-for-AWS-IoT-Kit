@@ -197,6 +197,38 @@ esp_err_t core2foraws_motion_gyro_get( float *roll, float *pitch, float *yaw );
 /* @[declare_core2foraws_motion_gyro_get] */
 
 /**
+ * @brief Retrieves accelerometer and gyroscope measurements taken at the
+ * same sampling instant.
+ *
+ * Calling core2foraws_motion_accel_get() and core2foraws_motion_gyro_get()
+ * back to back issues two I2C transfers, so the IMU can update between
+ * them. This function reads both in one burst, which is what sensor-fusion
+ * filters expect.
+ *
+ * **Example:**
+ *
+ * @code{c}
+ *  float ax, ay, az, roll, pitch, yaw;
+ *  core2foraws_motion_accel_gyro_get( &ax, &ay, &az, &roll, &pitch, &yaw );
+ * @endcode
+ *
+ * @param[out] x Acceleration in the X direction, in Gs.
+ * @param[out] y Acceleration in the Y direction, in Gs.
+ * @param[out] z Acceleration in the Z direction, in Gs.
+ * @param[out] roll Gyroscope roll rate, in degrees per second.
+ * @param[out] pitch Gyroscope pitch rate, in degrees per second.
+ * @param[out] yaw Gyroscope yaw rate, in degrees per second.
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ *  - ESP_OK                : Success
+ *  - ESP_ERR_INVALID_ARG	: Driver parameter error
+ */
+/* @[declare_core2foraws_motion_accel_gyro_get] */
+esp_err_t core2foraws_motion_accel_gyro_get( float *x, float *y, float *z,
+                                             float *roll, float *pitch,
+                                             float *yaw );
+/* @[declare_core2foraws_motion_accel_gyro_get] */
+
+/**
  * @brief Sets the accelerometer full-scale measurement range.
  *
  * Register and cached scale updates are serialized against scaled reads.

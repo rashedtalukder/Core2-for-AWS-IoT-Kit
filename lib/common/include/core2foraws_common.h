@@ -63,6 +63,21 @@ extern "C" {
 /* @[declare_core2foraws_common_i2s_internal] */
 
 /**
+ * @brief Converts a minimum delay in milliseconds to a `vTaskDelay()` tick
+ * count that is guaranteed to wait at least that long.
+ *
+ * `pdMS_TO_TICKS()` rounds down and `vTaskDelay( n )` can return up to one
+ * tick early, so at the default 100 Hz tick rate `pdMS_TO_TICKS( 1 )` is 0 and
+ * `pdMS_TO_TICKS( 10 )` can end almost immediately. Use this for datasheet
+ * minimum waits.
+ */
+/* @[declare_core2foraws_delay_ms_to_ticks] */
+#define CORE2FORAWS_DELAY_MS_TO_TICKS( ms )                                    \
+    ( ( TickType_t )( ( ( ( uint64_t )( ms ) * configTICK_RATE_HZ ) + 999U ) / \
+                      1000U ) + 1U )
+/* @[declare_core2foraws_delay_ms_to_ticks] */
+
+/**
  * @brief Largest single transfer the shared SPI2 bus must support, in bytes.
  *
  * The LVGL draw buffer is the largest consumer of the shared bus, so this is

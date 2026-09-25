@@ -35,14 +35,20 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_log.h>
+#include <esp_timer.h>
 
 #include "axp192.h"
 #include "core2foraws_common.h"
 #include "core2foraws_power.h"
 
+#define LCD_RESET_LOW_MS  100
+#define LCD_RESET_BOOT_MS 300
+
 static const char *_TAG = "CORE2FORAWS_POWER";
 
 static i2c_master_dev_handle_t _axp192_dev = NULL;
+/* esp_timer time at which the LCD/touch controllers may be used; 0 = none */
+static int64_t _lcd_ready_us = 0;
 
 static int32_t _axp192_i2c_read( void *handle, uint8_t address, uint8_t reg,
                                   uint8_t *buffer, uint16_t size )
@@ -155,11 +161,13 @@ esp_err_t core2foraws_power_init( void )
         return ESP_OK;
     }
 
-    /* Register AXP192 device on the internal I2C bus */
+    /* Register AXP192 device on the internal I2C bus. The AXP192 supports
+       400 kHz fast mode, which shortens how long each transfer holds the
+       shared bus. */
     if( _axp192_dev == NULL )
     {
         esp_err_t err = core2foraws_i2c_device_add( COMMON_I2C_INTERNAL,
-                                                     AXP192_ADDRESS, 100000,
+                                                     AXP192_ADDRESS, 400000,
                                                      &_axp192_dev );
         if( err != ESP_OK )
         {
@@ -289,15 +297,18 @@ esp_err_t core2foraws_power_init( void )
     err = core2foraws_power_axp_twiddle( AXP192_GPIO43_SIGNAL_STATUS, 0x02, 0x00 );
     if ( err != ESP_OK && ret == ESP_OK )
         ret = err;
-    vTaskDelay( pdMS_TO_TICKS ( 100 ) );
+    vTaskDelay( CORE2FORAWS_DELAY_MS_TO_TICKS( LCD_RESET_LOW_MS ) );
 
-    /* Release reset by pulling GPIO4 high. */
+    /* Release reset by pulling GPIO4 high. The controllers boot while the
+       remaining peripherals initialize; the display waits out the rest. */
     err = core2foraws_power_axp_twiddle( AXP192_GPIO43_SIGNAL_STATUS, 0x02, 0x02 );
     if ( err == ESP_OK )
+    {
     	ESP_LOGI( _TAG, "\tDisplay and touch reset" );
+        _lcd_ready_us = esp_timer_get_time() + LCD_RESET_BOOT_MS * 1000;
+    }
     else if ( ret == ESP_OK )
         ret = err;
-    vTaskDelay( pdMS_TO_TICKS( 300 ) );
     
     if( ret == ESP_OK )
     {
@@ -305,6 +316,17 @@ esp_err_t core2foraws_power_init( void )
     }
 
     return ret;
+}
+
+void core2foraws_power_lcd_ready_wait( void )
+{
+    int64_t remaining_us = _lcd_ready_us - esp_timer_get_time();
+    if( _lcd_ready_us != 0 && remaining_us > 0 )
+    {
+        ESP_LOGD( _TAG, "\tWaiting %lld us for LCD/touch start-up",
+                  ( long long ) remaining_us );
+        vTaskDelay( CORE2FORAWS_DELAY_MS_TO_TICKS( ( remaining_us + 999 ) / 1000 ) );
+    }
 }
 
 static esp_err_t _core2foraws_power_int_5v_enable( bool state ) 

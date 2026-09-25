@@ -35,7 +35,9 @@ BaseType_t xSemaphoreGive(SemaphoreHandle_t mutex)
 void taskYIELD(void) { assert(!"First-use wait must block, not spin"); }
 void vTaskDelay(TickType_t ticks)
 {
-    assert(ticks == 1);
+    /* 1 tick for mutex first-use; otherwise the 10 ms SPM1423 wake must
+       survive vTaskDelay returning up to one 10 ms tick early. */
+    assert(ticks == 1 || (ticks - 1) * 10 >= SPM1423_WAKE_MS);
     if (atomic_load(&_audio_mutex_state) == AUDIO_MUTEX_INITIALIZING)
     {
         _audio_mutex = xSemaphoreCreateMutexStatic(&_audio_mutex_buf);

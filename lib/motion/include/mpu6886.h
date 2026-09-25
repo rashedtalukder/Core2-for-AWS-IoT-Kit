@@ -5,7 +5,8 @@
  * No third-party source code was referenced or copied.
  *
  * Hardware connections (from schema.yml for Core2 for AWS IoT Kit):
- *   - Internal I²C bus: SDA=GPIO21, SCL=GPIO22, speed 100 kHz.
+ *   - Internal I²C bus: SDA=GPIO21, SCL=GPIO22; the device is clocked at
+ *     400 kHz (datasheet fast mode).
  *   - SA0/SDO pulled to GND via R5 (4.7 kΩ) → 7-bit I²C address 0x68.
  *   - The INT and CS signals are not routed in this hardware design.
  *
@@ -70,6 +71,8 @@ extern "C" {
 #define MPU6886_ADC_ACCEL_NUM_BYTES     6
 #define MPU6886_ADC_GYRO_NUM_BYTES      6
 #define MPU6886_ADC_TEMP_NUM_BYTES      2
+/* ACCEL_XOUT_H (0x3B) through GYRO_ZOUT_L (0x48), including temperature */
+#define MPU6886_ADC_ALL_NUM_BYTES       14
 
 /* ------------------------------------------------------------------ */
 /* Scale enumerations                                                 */
@@ -104,7 +107,8 @@ typedef enum {
  *
  * Resets the device, verifies the WHO_AM_I register, configures the
  * accelerometer to ±8 G and the gyroscope to ±2000 DPS, and enables
- * the data-ready interrupt.
+ * the data-ready interrupt. It does not wait out the sensor start-up
+ * time; the first accelerometer or gyroscope read does that instead.
  *
  * @param[in] port  I2C bus port the MPU6886 is connected to.
  * @return ESP_OK on success, or an error code.
@@ -204,6 +208,23 @@ esp_err_t mpu6886_accel_data_get( float *ax, float *ay, float *az );
  * @return ESP_OK on success.
  */
 esp_err_t mpu6886_gyro_data_get( float *gx, float *gy, float *gz );
+
+/**
+ * @brief Read scaled accelerometer and gyroscope data from one sample.
+ *
+ * Reads all output registers in a single 14-byte burst, so the six values
+ * come from the same sampling instant.
+ *
+ * @param[out] ax  X-axis acceleration in Gs.
+ * @param[out] ay  Y-axis acceleration in Gs.
+ * @param[out] az  Z-axis acceleration in Gs.
+ * @param[out] gx  X-axis angular rate (deg/s).
+ * @param[out] gy  Y-axis angular rate (deg/s).
+ * @param[out] gz  Z-axis angular rate (deg/s).
+ * @return ESP_OK on success.
+ */
+esp_err_t mpu6886_accel_gyro_data_get( float *ax, float *ay, float *az,
+                                       float *gx, float *gy, float *gz );
 
 /**
  * @brief Read the internal temperature in degrees Celsius.

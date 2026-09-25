@@ -91,6 +91,16 @@ esp_err_t core2foraws_motion_gyro_get( float *roll, float *pitch, float *yaw )
     return err;
 }
 
+esp_err_t core2foraws_motion_accel_gyro_get( float *x, float *y, float *z,
+                                             float *roll, float *pitch,
+                                             float *yaw )
+{
+    if( x == NULL || y == NULL || z == NULL ||
+        roll == NULL || pitch == NULL || yaw == NULL )
+        return ESP_ERR_INVALID_ARG;
+    return mpu6886_accel_gyro_data_get( x, y, z, roll, pitch, yaw );
+}
+
 esp_err_t core2foraws_motion_accel_range_set( motion_accel_range_t range )
 {
     if ( range < MOTION_ACCEL_RANGE_2G || range > MOTION_ACCEL_RANGE_16G )

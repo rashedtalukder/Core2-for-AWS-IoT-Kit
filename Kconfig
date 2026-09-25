@@ -12,6 +12,30 @@ menu "Core2 for AWS hardware features"
         help
           Enable audio support including speaker and microphone drivers.
 
+    config CORE2FORAWS_AUDIO_DMA_DESCRIPTORS
+        int "Audio I2S DMA descriptor count"
+        depends on SOFTWARE_AUDIO_SUPPORT
+        range 2 32
+        default 4
+        help
+          Number of I2S DMA buffers for the speaker and microphone. Total
+          buffered audio is descriptors x frames / sample rate; the default
+          4 x 128 frames holds about 11.6 ms at 44.1 kHz. If the writing task
+          is preempted for longer, the speaker underruns and clicks. Each
+          extra descriptor costs frames x 4 bytes of internal DMA-capable
+          DRAM while audio is enabled.
+
+    config CORE2FORAWS_AUDIO_DMA_FRAMES
+        int "Audio I2S DMA frames per descriptor"
+        depends on SOFTWARE_AUDIO_SUPPORT
+        range 8 1023
+        default 128
+        help
+          Frames in each I2S DMA buffer. One buffer must stay within the
+          4092-byte DMA descriptor limit, so frames x 4 bytes (16-bit stereo
+          speaker frames) must not exceed 4092. Larger buffers add latency
+          but tolerate longer scheduling gaps.
+
     config SOFTWARE_CRYPTO_SUPPORT
         bool "Cryptographic Encryption"
         depends on SOFTWARE_BSP_SUPPORT

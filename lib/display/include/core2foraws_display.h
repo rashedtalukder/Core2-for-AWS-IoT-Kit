@@ -75,6 +75,9 @@ extern "C"
    * Use this function instead of calling `esp_lcd_touch_read_data()` directly
    * so touch, PMU, RTC, IMU, and secure-element transactions remain serialized.
    *
+   * The LVGL input device and the virtual buttons share one sample: a reading
+   * less than 15 ms old is returned without another I2C transfer.
+   *
    * @param[out] points Touch-point output array.
    * @param[out] point_count Number of reported points.
    * @param[in] max_points Capacity of @p points.

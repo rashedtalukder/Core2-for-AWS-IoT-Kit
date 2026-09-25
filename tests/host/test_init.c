@@ -41,7 +41,7 @@ esp_err_t core2foraws_common_error(esp_err_t error)
 int main(void)
 {
 #ifdef CONFIG_SOFTWARE_BSP_SUPPORT
-    const int expected[] = { BUS, POWER, DISPLAY, BUTTON, MOTION, RTC, CRYPTO, RGB, WIFI };
+    const int expected[] = { BUS, POWER, MOTION, RTC, CRYPTO, DISPLAY, BUTTON, RGB, WIFI };
     assert(core2foraws_init() == ESP_OK);
     assert(call_count == MODULE_COUNT);
     assert(memcmp(calls, expected, sizeof(expected)) == 0);

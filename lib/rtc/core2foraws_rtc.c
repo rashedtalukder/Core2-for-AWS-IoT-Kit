@@ -231,8 +231,9 @@ esp_err_t core2foraws_rtc_init( void )
   esp_err_t ret = ESP_OK;
   if( _bm8563_dev == NULL )
   {
+    /* The BM8563 supports 400 kHz fast mode. */
     ret = core2foraws_i2c_device_add( COMMON_I2C_INTERNAL,
-                                     BM8563_I2C_ADDR, 100000,
+                                     BM8563_I2C_ADDR, 400000,
                                      &_bm8563_dev );
   }
   if( ret != ESP_OK )

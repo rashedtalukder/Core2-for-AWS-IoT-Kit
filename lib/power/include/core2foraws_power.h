@@ -129,6 +129,11 @@ typedef enum
  * initialization returns ESP_OK without replaying rail setup or the shared
  * display/touch reset pulse.
  *
+ * @note Init releases the LCD/touch reset but does not wait for the
+ * controllers to boot; core2foraws_display_init() waits out the remainder
+ * with core2foraws_power_lcd_ready_wait(). This lets other I2C peripherals
+ * initialize during that window.
+ *
  * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
@@ -136,6 +141,18 @@ typedef enum
 /* @[declare_core2foraws_power_init] */
 esp_err_t core2foraws_power_init( void );
 /* @[declare_core2foraws_power_init] */
+
+/**
+ * @brief Blocks until the LCD and touch controllers have had their full
+ * start-up time since core2foraws_power_init() released their shared reset.
+ *
+ * The FT6336 reference gives no start-up timing, so the BSP keeps a
+ * conservative 300 ms. Returns immediately once that has elapsed, or if the
+ * reset has not been pulsed in this boot.
+ */
+/* @[declare_core2foraws_power_lcd_ready_wait] */
+void core2foraws_power_lcd_ready_wait( void );
+/* @[declare_core2foraws_power_lcd_ready_wait] */
 
 /**
  * @brief Sets the brightness of the display backlight.

@@ -45,8 +45,18 @@
 #define I2S_DATA_PIN 2
 #define I2S_DATA_IN_PIN 34
 #define NS4168_SHUTDOWN_HOLD_US 110
+#ifdef CONFIG_CORE2FORAWS_AUDIO_DMA_DESCRIPTORS
+#define AUDIO_DMA_DESCRIPTORS CONFIG_CORE2FORAWS_AUDIO_DMA_DESCRIPTORS
+#else
 #define AUDIO_DMA_DESCRIPTORS 4
+#endif
+#ifdef CONFIG_CORE2FORAWS_AUDIO_DMA_FRAMES
+#define AUDIO_DMA_FRAMES CONFIG_CORE2FORAWS_AUDIO_DMA_FRAMES
+#else
 #define AUDIO_DMA_FRAMES 128
+#endif
+/* SPM1423 wake-up time after the PDM clock starts (datasheet section 11.2) */
+#define SPM1423_WAKE_MS 10
 
 /* The SPM1423 PDM microphone is only valid while its clock stays within
    1.0 MHz - 3.25 MHz (see lib/audio/datasheet/SPM1423.md, sections 11.1
@@ -411,8 +421,8 @@ static esp_err_t _core2foraws_audio_mic_install( void )
        the microphone's single-bit PDM stream. The I2S hardware
        decimates the PDM bitstream into 16-bit PCM samples for us. */
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG( I2S_NUM_0, I2S_ROLE_MASTER );
-    chan_cfg.dma_desc_num  = 4;
-    chan_cfg.dma_frame_num = 128;
+    chan_cfg.dma_desc_num  = AUDIO_DMA_DESCRIPTORS;
+    chan_cfg.dma_frame_num = AUDIO_DMA_FRAMES;
 
     err = i2s_new_channel( &chan_cfg, NULL, &_rx_handle );
     if ( err != ESP_OK )
@@ -452,9 +462,9 @@ static esp_err_t _core2foraws_audio_mic_install( void )
     _rx_running = true;
 
     /* The SPM1423 microphone needs up to 10 ms to wake up after the
-       PDM clock starts (see datasheet §11.2). Wait here so the first
-       read returns real audio instead of startup noise. */
-    vTaskDelay( pdMS_TO_TICKS( 10 ) );
+       PDM clock starts. Wait here so the first read returns real audio
+       instead of startup noise. */
+    vTaskDelay( CORE2FORAWS_DELAY_MS_TO_TICKS( SPM1423_WAKE_MS ) );
     
     _microphone_initialized = true;
 

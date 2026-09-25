@@ -15,9 +15,18 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <esp_log.h>
+#include <esp_timer.h>
 
+#include "core2foraws_common.h"
 #include "core2foraws_i2c.h"
 #include "mpu6886.h"
+
+#define MPU6886_I2C_SPEED_HZ         400000
+#define MPU6886_DEVICE_RESET_BIT     0x80
+#define MPU6886_RESET_TIMEOUT_MS     100
+/* Datasheet section 11.1 maximums, measured from leaving sleep */
+#define MPU6886_ACCEL_STARTUP_US     ( 20 * 1000 )
+#define MPU6886_GYRO_STARTUP_US      ( 100 * 1000 )
 
 /* ------------------------------------------------------------------ */
 /* Module state                                                       */
@@ -27,8 +36,20 @@ static i2c_master_dev_handle_t _mpu6886_dev;
 static gyro_scale_t gyro_scale = MPU6886_GFS_2000DPS;
 static acc_scale_t  acc_scale  = MPU6886_AFS_8G;
 static float acc_res, gyro_res;
+static int64_t _accel_ready_us;
+static int64_t _gyro_ready_us;
 
 static const char *TAG = "MPU6886";
+
+/* Blocks until esp_timer reaches ready_us, without holding the bus. */
+static void _wait_until( int64_t ready_us )
+{
+    int64_t remaining_us = ready_us - esp_timer_get_time();
+    if( remaining_us > 0 )
+    {
+        vTaskDelay( CORE2FORAWS_DELAY_MS_TO_TICKS( ( remaining_us + 999 ) / 1000 ) );
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* I2C helpers                                                        */
@@ -42,7 +63,7 @@ static esp_err_t mpu6886_i2c_init( core2foraws_i2c_port_t port )
     }
     _i2c_port = port;
     return core2foraws_i2c_device_add( port, MPU6886_ADDRESS,
-                                       100000, &_mpu6886_dev );
+                                       MPU6886_I2C_SPEED_HZ, &_mpu6886_dev );
 }
 
 static esp_err_t read_reg( uint8_t reg, uint8_t num_bytes,
@@ -95,21 +116,42 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
         return ESP_ERR_NOT_FOUND;
     }
 
-    /* Reset the device and wait for it to come back up */
-    err = write_reg( MPU6886_PWR_MGMT_1, ( 1 << 7 ) );
+    /* Reset the device; DEVICE_RESET auto-clears on completion (datasheet
+     * section 13.2). */
+    err = write_reg( MPU6886_PWR_MGMT_1, MPU6886_DEVICE_RESET_BIT );
     if ( err != ESP_OK )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 100 ) );
 
-    /* Select the best available clock source (auto-select) */
+    const int64_t reset_deadline_us =
+        esp_timer_get_time() + MPU6886_RESET_TIMEOUT_MS * 1000;
+    uint8_t pwr_mgmt_1 = MPU6886_DEVICE_RESET_BIT;
+    do
+    {
+        vTaskDelay( CORE2FORAWS_DELAY_MS_TO_TICKS( 1 ) );
+        /* Called directly so polling during reset does not log errors. */
+        err = core2foraws_i2c_read( _i2c_port, _mpu6886_dev,
+                                    MPU6886_PWR_MGMT_1, &pwr_mgmt_1, 1 );
+    } while( ( err != ESP_OK || ( pwr_mgmt_1 & MPU6886_DEVICE_RESET_BIT ) ) &&
+             esp_timer_get_time() < reset_deadline_us );
+    if ( err != ESP_OK || ( pwr_mgmt_1 & MPU6886_DEVICE_RESET_BIT ) )
+    {
+        ESP_LOGE( TAG, "\tDevice reset did not complete within %d ms",
+                  MPU6886_RESET_TIMEOUT_MS );
+        return err != ESP_OK ? err : ESP_ERR_TIMEOUT;
+    }
+
+    /* Select the best available clock source (auto-select). This clears
+     * SLEEP, which starts the accelerometer and gyroscope start-up timers. */
     err = write_reg( MPU6886_PWR_MGMT_1, 0x01 );
     if ( err != ESP_OK )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 10 ) );
+    const int64_t wake_us = esp_timer_get_time();
+    _accel_ready_us = wake_us + MPU6886_ACCEL_STARTUP_US;
+    _gyro_ready_us = wake_us + MPU6886_GYRO_STARTUP_US;
 
     /* ACCEL_INTEL_CTRL (0x69): WoM (Wake-on-Motion) intelligence control.
      * Per the MPU-6886 application note, bit 1 must be written after every
@@ -122,7 +164,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Set accelerometer full-scale range: ±8 G */
     err = write_reg( MPU6886_ACCEL_CONFIG, ( MPU6886_AFS_8G << 3 ) );
@@ -130,7 +171,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Set gyroscope full-scale range: ±2000 DPS */
     err = write_reg( MPU6886_GYRO_CONFIG, ( MPU6886_GFS_2000DPS << 3 ) );
@@ -138,7 +178,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* CONFIG (0x1A) DLPF_CFG=1: enables the digital low-pass filter.
      * Effect: gyroscope 3-dB bandwidth = 184 Hz, delay = 2.9 ms;
@@ -149,7 +188,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Sample rate = 1 kHz / (1 + 5) ≈ 167 Hz */
     err = write_reg( MPU6886_SMPLRT_DIV, 0x05 );
@@ -157,7 +195,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Disable all interrupts initially */
     err = write_reg( MPU6886_INT_ENABLE, 0x00 );
@@ -165,7 +202,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Accelerometer DLPF: use default bandwidth */
     err = write_reg( MPU6886_ACCEL_CONFIG2, 0x00 );
@@ -173,7 +209,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Disable FIFO and I2C master mode */
     err = write_reg( MPU6886_USER_CTRL, 0x00 );
@@ -181,7 +216,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Disable FIFO for all sensor types */
     err = write_reg( MPU6886_FIFO_EN, 0x00 );
@@ -189,7 +223,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Configure interrupt pin: latch until status register is read */
     err = write_reg( MPU6886_INT_PIN_CFG, 0x20 );
@@ -197,7 +230,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 1 ) );
 
     /* Enable data-ready interrupt source.
      * Note: the INT pin is not wired in this hardware design (schema.yml),
@@ -208,7 +240,6 @@ esp_err_t mpu6886_init( core2foraws_i2c_port_t port )
     {
         return err;
     }
-    vTaskDelay( pdMS_TO_TICKS( 10 ) );
 
     /* Cache the resolution values for the configured scales */
     mpu6886_gyro_res_get( gyro_scale, &gyro_res );
@@ -370,6 +401,7 @@ esp_err_t mpu6886_fsr_accel_set( acc_scale_t scale )
 esp_err_t mpu6886_accel_data_get( float *ax, float *ay, float *az )
 {
     if( ax == NULL || ay == NULL || az == NULL ) return ESP_ERR_INVALID_ARG;
+    _wait_until( _accel_ready_us );
     esp_err_t err = core2foraws_i2c_lock( _i2c_port );
     if( err != ESP_OK ) return err;
     int16_t raw_x = 0, raw_y = 0, raw_z = 0;
@@ -389,6 +421,7 @@ esp_err_t mpu6886_accel_data_get( float *ax, float *ay, float *az )
 esp_err_t mpu6886_gyro_data_get( float *gx, float *gy, float *gz )
 {
     if( gx == NULL || gy == NULL || gz == NULL ) return ESP_ERR_INVALID_ARG;
+    _wait_until( _gyro_ready_us );
     esp_err_t err = core2foraws_i2c_lock( _i2c_port );
     if( err != ESP_OK ) return err;
     int16_t raw_x = 0, raw_y = 0, raw_z = 0;
@@ -399,6 +432,34 @@ esp_err_t mpu6886_gyro_data_get( float *gx, float *gy, float *gz )
         *gx = ( float )raw_x * gyro_res;
         *gy = ( float )raw_y * gyro_res;
         *gz = ( float )raw_z * gyro_res;
+    }
+
+    esp_err_t unlock_err = core2foraws_i2c_unlock( _i2c_port );
+    return err != ESP_OK ? err : unlock_err;
+}
+
+esp_err_t mpu6886_accel_gyro_data_get( float *ax, float *ay, float *az,
+                                       float *gx, float *gy, float *gz )
+{
+    if( ax == NULL || ay == NULL || az == NULL ||
+        gx == NULL || gy == NULL || gz == NULL )
+        return ESP_ERR_INVALID_ARG;
+    _wait_until( _gyro_ready_us > _accel_ready_us ? _gyro_ready_us
+                                                  : _accel_ready_us );
+    esp_err_t err = core2foraws_i2c_lock( _i2c_port );
+    if( err != ESP_OK ) return err;
+    uint8_t buf[ MPU6886_ADC_ALL_NUM_BYTES ];
+    err = read_reg( MPU6886_ACCEL_XOUT_H, MPU6886_ADC_ALL_NUM_BYTES, buf );
+
+    if ( err == ESP_OK )
+    {
+        /* buf[ 6..7 ] holds TEMP_OUT between the accel and gyro blocks */
+        *ax = ( float )( int16_t )( ( buf[ 0 ] << 8 ) | buf[ 1 ] ) * acc_res;
+        *ay = ( float )( int16_t )( ( buf[ 2 ] << 8 ) | buf[ 3 ] ) * acc_res;
+        *az = ( float )( int16_t )( ( buf[ 4 ] << 8 ) | buf[ 5 ] ) * acc_res;
+        *gx = ( float )( int16_t )( ( buf[ 8 ] << 8 ) | buf[ 9 ] ) * gyro_res;
+        *gy = ( float )( int16_t )( ( buf[ 10 ] << 8 ) | buf[ 11 ] ) * gyro_res;
+        *gz = ( float )( int16_t )( ( buf[ 12 ] << 8 ) | buf[ 13 ] ) * gyro_res;
     }
 
     esp_err_t unlock_err = core2foraws_i2c_unlock( _i2c_port );

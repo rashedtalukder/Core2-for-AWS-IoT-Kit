@@ -5,7 +5,8 @@
  * No third-party source code was referenced or copied.
  *
  * Hardware connections (from schema.yml for Core2 for AWS IoT Kit):
- *   - Internal I²C bus: SDA=GPIO21, SCL=GPIO22, speed 100 kHz.
+ *   - Internal I²C bus: SDA=GPIO21, SCL=GPIO22; the device is clocked at
+ *     400 kHz (datasheet fast mode).
  *   - 7-bit I²C address: 0x34.  (Some datasheet versions list "0x68", which
  *     is the 8-bit *write* address; ESP-IDF uses 7-bit addresses, so 0x34.)
  *   - DCDC1  → ESP32 core power at 3.35 V.
