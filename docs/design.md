@@ -529,9 +529,7 @@ modules. When BSP support is disabled, only `core2foraws_init()` remains exposed
   I2C device to send the general-call token; the expected NACK is normalized to
   success while real transport or locking failures remain errors. Signatures
   use CryptoAuthLib directly and are fixed 64-byte raw `R || S` values rather
-  than mbedTLS-encoded signatures. The HAL accepts the current `address` field
-  and the deprecated `slave_address` field selected by CryptoAuthLib's
-  `ATCA_ENABLE_DEPRECATED` compatibility macro.
+  than mbedTLS-encoded signatures.
 - **rgb_led** treats the strip as **one device with 10 pixels** (not 10 separate
   LEDs), driven by the RMT peripheral with precise SK6812 timing. The strip is
   powered from 5 V, so it only works after the PMU enables the boost rail. A
@@ -691,9 +689,9 @@ less.
 
 | Layer | Supported environment | How it is validated |
 | --- | --- | --- |
-| BSP component | ESP-IDF v6.1.0 | Current factory and hardware smoke builds; v5.3/v6.0 are historical validations, not requalified after this update |
+| BSP component | ESP-IDF v6.1.0 | Current factory and hardware smoke builds |
 | Application integration | PlatformIO `espressif32` v7.1.3 (ESP-IDF v6.1.0) | Pinned by the factory consumer and standalone opt-in hardware test app; the BSP root remains an ESP-IDF component |
-| ESP-IDF v4.x | Not supported | Some legacy conditional branches remain, but v5-only driver APIs and component names define the actual minimum |
+| Older ESP-IDF releases | Not supported | The build uses ESP-IDF v6 component names and driver APIs only |
 
 - **Component, not standalone application:** this repository has no top-level
   `sdkconfig` or application `main`, so build and test commands run from a

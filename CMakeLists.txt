@@ -3,21 +3,13 @@
 #
 cmake_minimum_required( VERSION 3.16.0 )
 
-set( ESP_IDF_PATH                       ${idf_path} )
 set( CORE2FORAWS_SRCS                   "${COMPONENT_DIR}/core2foraws.c" )
 set( CORE2FORAWS_INCLUDE_DIRS           "${COMPONENT_DIR}/include" )
 
-# esp_adc_cal was removed in ESP-IDF v5.x, replaced by esp_adc
-if( IDF_VERSION_MAJOR GREATER_EQUAL 5 )
-    set( ADC_COMPONENT "esp_adc" )
-else()
-    set( ADC_COMPONENT "esp_adc_cal" )
-endif()
-
-set( CORE2FORAWS_REQUIRES               ${ADC_COMPONENT}
+set( CORE2FORAWS_REQUIRES               "esp_adc"
                                         "mbedtls"
                                         "freertos"
-                                        "driver"
+                                        "esp_driver_gpio"
                                         "esp_driver_i2c"
                                         "esp_driver_i2s"
                                         "esp_driver_rmt"
@@ -147,18 +139,7 @@ if( CONFIG_SOFTWARE_WIFI_SUPPORT )
         list( APPEND CORE2FORAWS_PRIV_REQUIRES  "bt" )
     endif()
 
-    if( IDF_VERSION_MAJOR GREATER_EQUAL 5 )
-        # ESP-IDF v5+: qrcode is a managed component (espressif/qrcode)
-        list( APPEND CORE2FORAWS_PRIV_REQUIRES  "qrcode" )
-    else()
-        # ESP-IDF v4: qrcode ships in examples/common_components
-        file( GLOB_RECURSE QRCODE_SRCS          "${ESP_IDF_PATH}/examples/common_components/qrcode/*.c" )
-        set( QRCODE_INCLUDE_DIRS                "${ESP_IDF_PATH}/examples/common_components/qrcode"
-                                                "${ESP_IDF_PATH}/examples/common_components/qrcode/include"
-                                                )
-        list( APPEND CORE2FORAWS_SRCS           ${QRCODE_SRCS} )
-        list( APPEND CORE2FORAWS_INCLUDE_DIRS   ${QRCODE_INCLUDE_DIRS} )
-    endif()
+    list( APPEND CORE2FORAWS_PRIV_REQUIRES  "qrcode" )
 endif()
 
 idf_component_register( SRCS                ${CORE2FORAWS_SRCS}
@@ -168,6 +149,9 @@ idf_component_register( SRCS                ${CORE2FORAWS_SRCS}
                         EXCLUDE_SRCS        ${CORE2FORAWS_EXCLUDE_SRCS}
                         REQUIRES            ${CORE2FORAWS_REQUIRES}
                         )
+
+# Old LVGL API names fail to build instead of resolving through aliases
+target_compile_definitions( ${COMPONENT_LIB} PRIVATE LV_DISABLE_API_MAPPING )
 
 # Override esp-cryptoauthlib's default I2C HAL so the ATECC608 uses the BSP's
 # shared internal I2C bus instead of creating its own.

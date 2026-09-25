@@ -133,12 +133,7 @@ ATCA_STATUS __wrap_hal_i2c_init( ATCAIface iface, ATCAIfaceCfg *cfg )
         return ATCA_SUCCESS;
     }
 
-    uint16_t addr;
-#ifdef ATCA_ENABLE_DEPRECATED
-    addr = cfg->atcai2c.slave_address >> 1;
-#else
-    addr = cfg->atcai2c.address >> 1;
-#endif
+    uint16_t addr = cfg->atcai2c.address >> 1;
 
     esp_err_t err = core2foraws_i2c_device_add( CORE2FORAWS_I2C_INTERNAL, addr,
         cfg->atcai2c.baud, &_atecc_dev );

@@ -227,7 +227,7 @@ static void _display_flush( lv_display_t *display, const lv_area_t *area,
 {
     /* Swap before taking the shared bus so the SD card does not wait on it.
      * A skipped transfer below discards the buffer either way. */
-    lv_draw_sw_rgb565_swap( color_map, lv_area_get_size( area ) );
+    lv_draw_rgb565_swap( color_map, lv_area_get_size( area ) );
 
     if( core2foraws_common_spi_semaphore == NULL ||
         xSemaphoreTake( core2foraws_common_spi_semaphore,

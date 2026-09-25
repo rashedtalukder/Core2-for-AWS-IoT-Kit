@@ -181,12 +181,8 @@ esp_err_t core2foraws_sd_mount( void )
 
     host.slot = SPI_HOST_USE;
 
-#if ESP_IDF_VERSION > ESP_IDF_VERSION_VAL(4, 1, 0)
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot_config.host_id = host.slot;
-#else
-    sdspi_slot_config_t slot_config = SDSPI_SLOT_CONFIG_DEFAULT();
-#endif
     slot_config.gpio_cs = SD_SPI_CS;
     err = _sd_spi_lock();
     if( err != ESP_OK )
@@ -194,11 +190,7 @@ esp_err_t core2foraws_sd_mount( void )
         _sd_unlock();
         return err;
     }
-#if ESP_IDF_VERSION > ESP_IDF_VERSION_VAL( 4, 1, 0 )
     err = esp_vfs_fat_sdspi_mount( _mount_path, &host, &slot_config, &mount_config, &card );
-#else
-    err = esp_vfs_fat_sdmmc_mount( _mount_path, &host, &slot_config, &mount_config, &card );
-#endif
     _sd_spi_unlock();
     if ( err == ESP_OK )
     {

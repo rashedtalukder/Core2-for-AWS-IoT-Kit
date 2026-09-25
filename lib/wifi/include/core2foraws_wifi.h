@@ -432,9 +432,12 @@ esp_err_t core2foraws_wifi_reset( void );
  * 
  *      lvgl_port_lock( 0 );
  *      
- *      lv_coord_t qr_square_px = 200;
+ *      int32_t qr_square_px = 200;
  *      lv_color_t amazon_squid_ink = lv_color_hex( 0x232F3E );
- *      lv_obj_t *display_wifi_qr = lv_qrcode_create( lv_scr_act(), qr_square_px, amazon_squid_ink, LV_COLOR_WHITE );
+ *      lv_obj_t *display_wifi_qr = lv_qrcode_create( lv_screen_active() );
+ *      lv_qrcode_set_size( display_wifi_qr, qr_square_px );
+ *      lv_qrcode_set_dark_color( display_wifi_qr, amazon_squid_ink );
+ *      lv_qrcode_set_light_color( display_wifi_qr, lv_color_white() );
  *      char wifi_provisioning_str[ WIFI_PROV_STR_LEN ] = { 0 };
  * 
  *      if ( core2foraws_wifi_prov_str_get( wifi_provisioning_str ) == ESP_OK )
@@ -450,7 +453,7 @@ esp_err_t core2foraws_wifi_reset( void );
  *          portMAX_DELAY );    // Wait indefinitely.
  *
  *      lvgl_port_lock( 0 );
- *      lv_obj_del( display_wifi_qr );
+ *      lv_obj_delete( display_wifi_qr );
  *      lvgl_port_unlock();
  *      
  *  }

@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #include "esp_err.h"
 
-#define ESP_IDF_VERSION_VAL(major, minor, patch) ((major) * 10000 + (minor) * 100 + (patch))
-#define ESP_IDF_VERSION ESP_IDF_VERSION_VAL(6, 0, 1)
 #define GPIO_NUM_4 4
 typedef struct { struct { char name[8]; } cid; } sdmmc_card_t;
 typedef struct { int slot; } sdmmc_host_t;

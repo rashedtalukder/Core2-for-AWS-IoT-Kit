@@ -53,11 +53,7 @@ esp_err_t core2foraws_crypto_init( void )
     }
 
     _crypto_iface_cfg = cfg_ateccx08a_i2c_default;
-#ifdef ATCA_ENABLE_DEPRECATED
-    _crypto_iface_cfg.atcai2c.slave_address = ATECC608_I2C_ADDRESS_8BIT;
-#else
     _crypto_iface_cfg.atcai2c.address = ATECC608_I2C_ADDRESS_8BIT;
-#endif
     _crypto_iface_cfg.atcai2c.baud = ATECC608_I2C_BAUD_HZ;
 
     ATCA_STATUS err = atcab_init( &_crypto_iface_cfg );
