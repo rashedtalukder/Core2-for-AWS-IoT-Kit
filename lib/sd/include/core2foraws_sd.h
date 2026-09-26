@@ -75,7 +75,7 @@ extern "C" {
  *  }
  * @endcode
  *
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK          : Success
  *  - ESP_ERR_TIMEOUT : Shared SPI bus or SD lock was not free in time
  *  - ESP_FAIL        : Failed to mount the SD card
@@ -144,7 +144,7 @@ esp_err_t core2foraws_sd_mount( void );
  * reads at about the same speed as an internal one (measured on this board:
  * roughly 650 vs 730 KB/s for a 32 KB file).
  *
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK          : Success
  *  - ESP_ERR_TIMEOUT : Shared SPI bus or SD lock was not free in time.
  *                      @p message holds any bytes read before the timeout.
@@ -219,7 +219,7 @@ esp_err_t core2foraws_sd_read( const char *file_name, char *message, size_t to_r
  * frames; write in the background at a modest rate if the UI must stay
  * smooth.
  *
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK          : Success
  *  - ESP_ERR_TIMEOUT : Shared SPI bus or SD lock was not free in time.
  *                      @p wrote_length holds the bytes written before the
@@ -244,7 +244,7 @@ esp_err_t core2foraws_sd_write( const char *file_name, const char* message, size
  * `ESP_ERR_TIMEOUT` rather than blocking the caller indefinitely.
  *
  * To learn more about using the SD card, visit Espressif's virtual
- * [file system component](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/storage/vfs.html)
+ * [file system component](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/storage/vfs.html)
  * docs for usage.
  *
  * The example code below, mounts the SD card, writes a file named
@@ -278,7 +278,7 @@ esp_err_t core2foraws_sd_write( const char *file_name, const char* message, size
  *  }
  * @endcode
  *
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_STATE : Failed to unmount. Must call @ref core2foraws_sd_mount first
  */

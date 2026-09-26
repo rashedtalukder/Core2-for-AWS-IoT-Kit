@@ -18,15 +18,24 @@
  * they survive reboots and application reflashes. @ref core2foraws_wifi_connect
  * and BLE provisioning (core2foraws_wifi_prov.h) share that single store.
  *
- * Typical boot sequence:
+ * Typical boot sequence with `CONFIG_CORE2FORAWS_WIFI_PROVISIONING` enabled:
  * @code{c}
- *  char ssid[ MAX_SSID_LEN + 1 ];
- *  if( core2foraws_wifi_saved_ssid_get( ssid ) == ESP_OK )
- *      core2foraws_wifi_reconnect( 0 );
- *  else
- *      core2foraws_wifi_provisioning_start();
+ *  #include "core2foraws.h"
  *
- *  xEventGroupWaitBits( wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY );
+ *  void app_main( void )
+ *  {
+ *      ESP_ERROR_CHECK( core2foraws_init() );
+ *      char ssid[ MAX_SSID_LEN + 1 ];
+ *      esp_err_t err = core2foraws_wifi_saved_ssid_get( ssid );
+ *      if( err == ESP_OK )
+ *          ESP_ERROR_CHECK( core2foraws_wifi_reconnect( 0 ) );
+ *      else if( err == ESP_ERR_NOT_FOUND )
+ *          ESP_ERROR_CHECK( core2foraws_wifi_provisioning_start() );
+ *      else
+ *          ESP_ERROR_CHECK( err );
+ *
+ *      xEventGroupWaitBits( wifi_event_group, WIFI_CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY );
+ *  }
  * @endcode
  */
 
@@ -200,9 +209,10 @@ esp_err_t core2foraws_wifi_saved_ssid_get( char ssid[ MAX_SSID_LEN + 1 ] );
 /**
  * @brief Get the current link state.
  *
- * @return The link state; @ref CORE2FORAWS_WIFI_STATE_IDLE before init.
+ * @param[out] state Receives the link state; @ref CORE2FORAWS_WIFI_STATE_IDLE before init.
+ * @return ESP_OK on success, or ESP_ERR_INVALID_ARG if @p state is NULL.
  */
-core2foraws_wifi_state_t core2foraws_wifi_state_get( void );
+esp_err_t core2foraws_wifi_state_get( core2foraws_wifi_state_t *state );
 
 /**
  * @brief Get the reason the most recent connection attempt or link failed.

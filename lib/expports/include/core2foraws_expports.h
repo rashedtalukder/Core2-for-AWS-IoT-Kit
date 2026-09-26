@@ -32,7 +32,7 @@ extern "C" {
  * This maps to GPIO 32 and can be used as the Serial Data Line 
  * (SDA) pin for I2C bus communication. Read more about [I2C 
  * capabilities of the ESP32 microcontroller and available APIs 
- * in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/peripherals/i2c.html).
+ * in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/i2c.html).
  */
 /* @[declare_core2foraws_expports_port_a_sda_pin] */
 #define PORT_A_SDA_PIN GPIO_NUM_32
@@ -44,7 +44,7 @@ extern "C" {
  * This maps to GPIO 33 and can be used as the Serial CLock Line 
  * (SCL) pin to synchronize I2C bus communication. Read more about 
  * [I2C capabilities of the ESP32 microcontroller and available 
- * APIs in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/peripherals/i2c.html).
+ * APIs in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/i2c.html).
  */
 /* @[declare_core2foraws_expports_port_a_scl_pin] */
 #define PORT_A_SCL_PIN GPIO_NUM_33
@@ -61,7 +61,7 @@ extern "C" {
  * @brief The ADC pin on expansion port B.
  *
  * This maps to GPIO 36 and is capable of converting analog signals 
- * to digital. Read more about using [ADCs with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/adc.html).
+ * to digital. Read more about using [ADCs with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/adc/index.html).
  */
 /* @[declare_core2foraws_expports_port_b_adc_pin] */
 #define PORT_B_ADC_PIN GPIO_NUM_36
@@ -72,7 +72,7 @@ extern "C" {
  *
  * This maps to GPIO 26 and is capable of converting digital 
  * signals to analog. Read more about using [DACs with the 
- * ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/dac.html).
+ * ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/dac.html).
  */
 /* @[declare_core2foraws_expports_port_b_dac_pin] */
 #define PORT_B_DAC_PIN GPIO_NUM_26
@@ -83,7 +83,7 @@ extern "C" {
  *
  * This maps to GPIO 14 and can be used as the transmission 
  * channel for UART communication. Read more about [UART 
- * communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/uart.html).
+ * communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  */
 /* @[declare_core2foraws_expports_port_c_uart_tx_pin] */
 #define PORT_C_UART_TX_PIN GPIO_NUM_14
@@ -94,7 +94,7 @@ extern "C" {
  *
  * This maps to GPIO 13 and can be used as the receiver channel 
  * for UART communication. Read more about [UART communications 
- * with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/uart.html).
+ * with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  */
 /* @[declare_core2foraws_expports_port_c_uart_rx_pin] */
 #define PORT_C_UART_RX_PIN GPIO_NUM_13
@@ -104,7 +104,7 @@ extern "C" {
  * @brief The default UART controller used for expansion port C.
  *
  * This maps to UART controller UART2.
- * Read more about [UART communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/uart.html).
+ * Read more about [UART communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  */
 /* @[declare_core2foraws_expports_port_c_uart_num] */
 #define PORT_C_UART_NUM UART_NUM_2
@@ -116,7 +116,7 @@ extern "C" {
  *
  * This is the default size of the UART interface's receiver ring
  * buffer.
- * Read more about [UART communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/uart.html).
+ * Read more about [UART communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  */
 /* @[declare_core2foraws_expports_uart_rx_buf_size] */
 #define UART_RX_BUF_SIZE 2048
@@ -129,7 +129,7 @@ extern "C" {
  *
  * This is the default time to wait for the UART interface to send
  * data.
- * Read more about [UART communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/uart.html).
+ * Read more about [UART communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  */
 /* @[declare_core2foraws_expports_uart_tx_send_wait] */
 #define UART_TX_SEND_WAIT 100
@@ -193,7 +193,7 @@ extern "C" {
  * @param[in] pin The GPIO pin to read.
  * @param[out] level Pointer to set as the boolean digital level of 
  * the pin reading.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to read
  */
@@ -257,7 +257,7 @@ esp_err_t core2foraws_expports_digital_read( gpio_num_t pin, bool *level );
  *
  * @param[in] pin The GPIO pin to write.
  * @param[in] level The digital level to write to the pin.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to write
  */
@@ -301,7 +301,7 @@ esp_err_t core2foraws_expports_digital_write( gpio_num_t pin, const bool level )
  * @endcode
  *
  * @param[in] pin The GPIO pin to reset. 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to reset
  */
@@ -384,7 +384,7 @@ esp_err_t core2foraws_expports_pin_reset( gpio_num_t pin );
  *  }
  * @endcode
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -429,7 +429,7 @@ esp_err_t core2foraws_expports_i2c_device_remove(
  * A thread-safe method to read from the I2C peripheral.
  * 
  * Read more about [I2C capabilities of the ESP32 microcontroller 
- * and available APIs in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/peripherals/i2c.html).
+ * and available APIs in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/i2c.html).
  * 
  * @note The baud rate of the I2C device is set per-device via the 
  * `scl_speed_hz` argument to @ref core2foraws_expports_i2c_device_add. 
@@ -501,7 +501,7 @@ esp_err_t core2foraws_expports_i2c_device_remove(
  * @param[in] register_address The data register address, or @ref I2C_NO_REGISTER_ADDR if the device has no register.
  * @param[out] data Pointer to the data read from the I2C peripheral.
  * @param[in] length The number of bytes to read.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -515,7 +515,7 @@ esp_err_t core2foraws_expports_i2c_read( i2c_master_dev_handle_t dev_handle, uin
  * A thread-safe method to write to the I2C peripheral.
  * 
  * Read more about [I2C capabilities of the ESP32 microcontroller 
- * and available APIs in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/peripherals/i2c.html).
+ * and available APIs in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/i2c.html).
  * 
  * @note The baud rate of the I2C device is set per-device via the 
  * `scl_speed_hz` argument to @ref core2foraws_expports_i2c_device_add. 
@@ -564,7 +564,7 @@ esp_err_t core2foraws_expports_i2c_read( i2c_master_dev_handle_t dev_handle, uin
  * @param[in] data Pointer to the data to write to the I2C 
  * peripheral.
  * @param[in] length The number of bytes to write.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -579,7 +579,7 @@ esp_err_t core2foraws_expports_i2c_write( i2c_master_dev_handle_t dev_handle, ui
  * associated with the external port.
  * 
  * Read more about [I2C capabilities of the ESP32 microcontroller 
- * and available APIs in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/peripherals/i2c.html).
+ * and available APIs in the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/i2c.html).
  *
  * @note The AXP192 PMU is configured to output 5v on the 
  * expansion port's VCC pin. Some peripherals require 3.3V and 
@@ -644,7 +644,7 @@ esp_err_t core2foraws_expports_i2c_write( i2c_master_dev_handle_t dev_handle, ui
  *  }
  * @endcode
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -658,7 +658,7 @@ esp_err_t core2foraws_expports_i2c_close( void );
  * This function reads the raw ADC value from Port B's
  * Analog-to-Digital-Converter (ADC) on GPIO36. GPIO36 is the only 
  * pin on the external ports with access to the ADC.
- * Read more about using [ADCs with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/adc.html).
+ * Read more about using [ADCs with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/adc/index.html).
  * 
  * @note Returns the raw ADC conversion without calibration.
  *
@@ -698,7 +698,7 @@ esp_err_t core2foraws_expports_i2c_close( void );
  * @endcode
  *
  * @param[out] raw_adc_value A pointer to the raw ADC reading.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to write
  */
@@ -714,7 +714,7 @@ esp_err_t core2foraws_expports_adc_read( int *raw_adc_value );
  * Analog-to-Digital-Converter (ADC) on GPIO36 and converts it to
  * millivolts using the VRef calibration. GPIO36 is the only pin on
  * the external ports with access to the ADC.
- * Read more about using [ADCs with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/adc.html).
+ * Read more about using [ADCs with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/adc/index.html).
  * 
  * @note Uses the available ESP-IDF ADC calibration scheme. If calibration is
  * unavailable, this function returns ESP_ERR_NOT_SUPPORTED; use
@@ -757,7 +757,7 @@ esp_err_t core2foraws_expports_adc_read( int *raw_adc_value );
  *
  * @param[out] adc_mvolts Pointer to the voltage reading from the 
  * ADC in millivolts.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to write
  */
@@ -790,7 +790,7 @@ esp_err_t core2foraws_expports_adc_mv_read( uint32_t *adc_mvolts );
  * @endcode
  *
  * @param[in] dac_mvolts The voltage level to set the DAC pin in millivolts.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to write
  */
@@ -819,7 +819,7 @@ esp_err_t core2foraws_expports_dac_mv_write( const uint16_t dac_mvolts );
  * application or attached peripheral. For more information about 
  * UART communications on the Core2 for AWS IoT Kit using the 
  * ESP32 and how to create your own configuration, visit Espressif's 
- * official [documentation](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/peripherals/uart.html).
+ * official [documentation](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  *
  * @note The ESP32 is a 3.3v device and requires 3.3v on the UART 
  * TX/RX lines. Higher voltages requires the use of a level shifter.
@@ -894,7 +894,7 @@ esp_err_t core2foraws_expports_dac_mv_write( const uint16_t dac_mvolts );
  * @endcode
  *
  * @param[in] baud The baud rate (bits per second) of the UART2 channel.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to write
  */
@@ -919,7 +919,7 @@ esp_err_t core2foraws_expports_uart_begin( uint32_t baud );
  * application or attached peripheral. For more information about 
  * UART communications on the Core2 for AWS IoT Kit using the 
  * ESP32 and how to create your own configuration, visit Espressif's 
- * official [documentation](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/peripherals/uart.html).
+ * official [documentation](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  *
  * @note The ESP32 is a 3.3v device and requires 3.3v on the UART 
  * TX/RX lines. Higher voltages requires the use of a level shifter.
@@ -997,7 +997,7 @@ esp_err_t core2foraws_expports_uart_begin( uint32_t baud );
  * transmit.
  * @param[out] was_written_length Pointer to the number of bytes 
  * sent over @ref PORT_C_UART_TX_PIN (GPIO 14).
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to write
  */
@@ -1022,7 +1022,7 @@ esp_err_t core2foraws_expports_uart_write( const char *message, size_t length, s
  * application or attached peripheral. For more information about 
  * UART communications on the Core2 for AWS IoT Kit using the 
  * ESP32 and how to create your own configuration, visit Espressif's 
- * official [documentation](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/peripherals/uart.html).
+ * official [documentation](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  *
  * @note The ESP32 is a 3.3v device and requires 3.3v on the UART 
  * TX/RX lines. Higher voltages requires the use of a level shifter.
@@ -1101,7 +1101,7 @@ esp_err_t core2foraws_expports_uart_write( const char *message, size_t length, s
  * buffer.
  * @param[out] was_read_length Pointer to the number of bytes read 
  * from @ref PORT_C_UART_RX_PIN (GPIO 13).
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to write
  */
@@ -1168,7 +1168,7 @@ esp_err_t core2foraws_expports_uart_read( uint8_t *message_buffer,
  * }
  * @endcode
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  * - ESP_OK    : Success
  * - ESP_FAIL	: Parameter error
  * - ESP_ERR_TIMEOUT : Timeout
@@ -1184,7 +1184,7 @@ esp_err_t core2foraws_expports_uart_send_finished( void );
  * application or attached peripheral. For more information about 
  * UART communications on the Core2 for AWS IoT Kit using the 
  * ESP32 and how to create your own configuration, visit Espressif's 
- * official [documentation](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/peripherals/uart.html).
+ * official [documentation](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  *
  * @note The ESP32 is a 3.3v device and requires 3.3v on the UART 
  * TX/RX lines. Higher voltages requires the use of a level shifter.
@@ -1261,7 +1261,7 @@ esp_err_t core2foraws_expports_uart_send_finished( void );
  *
  * @param[out] was_flushed A pointer to a boolean that indicates
  * whether the buffer was flushed.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL	: Failed to write
  *  - ESP_ERR_TIMEOUT : Timeout

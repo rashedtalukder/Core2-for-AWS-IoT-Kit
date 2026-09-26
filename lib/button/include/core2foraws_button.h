@@ -138,7 +138,7 @@ extern "C"
    * RELEASE | LONGPRESS)
    * @param[in] callback The callback function to call when events occur
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
   *  - ESP_OK              : Success
   *  - ESP_ERR_INVALID_ARG : Invalid button, event mask, or callback
   *  - ESP_FAIL            : Failed to register callback
@@ -157,7 +157,7 @@ extern "C"
    * @param[in] events Bitmask of events to unregister (PRESS | RELEASE |
    * LONGPRESS)
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
   *  - ESP_OK              : Success
   *  - ESP_ERR_INVALID_ARG : Invalid button or event mask
   *  - ESP_FAIL            : Failed to unregister callback
@@ -177,7 +177,7 @@ extern "C"
   * initialization returns ESP_OK without creating another task or mutex.
    *
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK    : Success
    *  - ESP_FAIL  : Failed to initialize over I2C bus
    */

@@ -218,7 +218,8 @@ static void expect_state(core2foraws_wifi_state_t state)
     EventBits_t expected = state == CORE2FORAWS_WIFI_STATE_CONNECTED  ? WIFI_CONNECTED_BIT :
                            state == CORE2FORAWS_WIFI_STATE_CONNECTING ? WIFI_CONNECTING_BIT :
                                                                         WIFI_DISCONNECTED_BIT;
-    assert(core2foraws_wifi_state_get() == state);
+    core2foraws_wifi_state_t actual;
+    assert(core2foraws_wifi_state_get(&actual) == ESP_OK && actual == state);
     assert(link == expected);
     assert(lock_depth == 0);
 }
@@ -227,7 +228,9 @@ static void expect_state(core2foraws_wifi_state_t state)
 
 static void test_init_and_arguments(void)
 {
-    assert(core2foraws_wifi_state_get() == CORE2FORAWS_WIFI_STATE_IDLE);
+    core2foraws_wifi_state_t state = CORE2FORAWS_WIFI_STATE_CONNECTED;
+    assert(core2foraws_wifi_state_get(NULL) == ESP_ERR_INVALID_ARG);
+    assert(core2foraws_wifi_state_get(&state) == ESP_OK && state == CORE2FORAWS_WIFI_STATE_IDLE);
     assert(core2foraws_wifi_connect("home", "pw", 100) == ESP_ERR_INVALID_STATE);
     assert(core2foraws_wifi_init() == ESP_OK);
     EventGroupHandle_t group = wifi_event_group;

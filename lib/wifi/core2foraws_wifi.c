@@ -722,9 +722,11 @@ esp_err_t core2foraws_wifi_saved_ssid_get( char ssid[ MAX_SSID_LEN + 1 ] )
     return err;
 }
 
-core2foraws_wifi_state_t core2foraws_wifi_state_get( void )
+esp_err_t core2foraws_wifi_state_get( core2foraws_wifi_state_t *state )
 {
-    return ( core2foraws_wifi_state_t )atomic_load( &_state );
+    if( state == NULL ) return ESP_ERR_INVALID_ARG;
+    *state = ( core2foraws_wifi_state_t )atomic_load( &_state );
+    return ESP_OK;
 }
 
 esp_err_t core2foraws_wifi_last_error_get( void )

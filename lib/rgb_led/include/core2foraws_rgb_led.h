@@ -48,7 +48,7 @@ typedef enum
  * @note The core2foraws_init() calls this function when the 
  * hardware feature is enabled.
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK            : Success
  *  - ESP_ERR_NO_MEM    : Out of memory
  */
@@ -101,7 +101,7 @@ esp_err_t core2foraws_rgb_led_init( void );
  * @param[in] led_num The LED to set. Accepts a value from 0 to 9.
  * @param[in] color Hexadecial color value for the LED. Accepts 
  * hexadecimal (web colors). 0x000000 is black and 0xffffff is white.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_NOT_SUPPORTED : Invalid LED number or color
  */
@@ -156,7 +156,7 @@ esp_err_t core2foraws_rgb_led_single_color_set( uint8_t led_num, uint32_t color 
  * @param[in] side The LED bar side to set.
  * @param[in] color Hexadecial color value for the LED. Accepts 
  * hexadecimal (web colors). 0x000000 is black and 0xffffff is white.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG   : Invalid value in parameter(s)
  *  - ESP_ERR_NOT_SUPPORTED : Invalid LED number or color
@@ -223,7 +223,7 @@ esp_err_t core2foraws_rgb_led_side_color_set( rgb_led_side_type_t side, uint32_t
  * @param[in] brightness The brightness level to set the LED bars. 
  * Accepts percentage value from 0 to 100, with 100 being full 
  * bright.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK              : Success
  *  - ESP_ERR_INVALID_ARG : Brightness is greater than 100
  */
@@ -242,7 +242,7 @@ esp_err_t core2foraws_rgb_led_brightness_set( uint8_t brightness );
  * after making multiple changes instead of updating with
  * every change.
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_FAIL              : Failed to update
  */
@@ -293,7 +293,7 @@ esp_err_t core2foraws_rgb_led_write( void );
  *  }
  * @endcode
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG   : Invalid value in parameter(s)
  *  - ESP_ERR_NOT_SUPPORTED : Driver issue
@@ -326,7 +326,7 @@ esp_err_t core2foraws_rgb_led_clear( void );
  *  }
  * @endcode
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  */
 /* @[declare_core2foraws_rgb_led_deinit] */

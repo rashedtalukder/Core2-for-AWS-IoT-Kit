@@ -49,7 +49,7 @@ purposes.
 | **Stability first** | Shared hardware (buses, the audio clock) is protected by a lock. Successfully initialized modules are idempotent, and failures are returned rather than aborting the application. |
 | **One obvious entry point** | The application includes [core2foraws.h](../include/core2foraws.h) and calls `core2foraws_init()` for automatic modules. Audio, SD, expansion-port sessions, and Wi-Fi start remain explicit. |
 | **Hardware truth, encoded once** | Pin maps, power sequencing, and shared-bus rules live in the BSP, not in your app. See [.claude/rules/pinmap.md](../.claude/rules/pinmap.md) and [.claude/rules/board.md](../.claude/rules/board.md). |
-| **Predictable error handling** | Every public function returns `esp_err_t`; values are returned through output parameters. You can always check success the same way. |
+| **Predictable error handling** | Most operations return `esp_err_t` and place results in output parameters; state snapshots and diagnostic getters are documented individually. |
 | **Readable over clever** | Device drivers are thin and explicit, with board bus and power dependencies visible at their call sites. |
 | **Pay only for what you use** | The master `SOFTWARE_BSP_SUPPORT` switch gates the common and hardware layers; individual hardware modules are further gated by their `CONFIG_SOFTWARE_*` flags. |
 
@@ -538,6 +538,8 @@ modules. When BSP support is disabled, only `core2foraws_init()` remains exposed
 - **wifi** owns the station interface through one state machine. Exactly one
   of `WIFI_CONNECTED_BIT`, `WIFI_CONNECTING_BIT`, and `WIFI_DISCONNECTED_BIT`
   is set in `wifi_event_group`, which is created once and never deleted.
+  `core2foraws_wifi_state_get(&state)` returns `ESP_OK` and writes the current
+  state (including `IDLE` before init), or `ESP_ERR_INVALID_ARG` for `NULL`.
   `core2foraws_wifi_connect()` saves new credentials before the attempt and
   restores the previous saved network if it fails, so a wrong password never
   survives. `core2foraws_wifi_reconnect()` keeps the saved network up with
@@ -566,7 +568,7 @@ Knowing these conventions makes the whole codebase easy to read.
 
 ### 8.1 Error handling
 
-- **Every public function returns `esp_err_t`.** Check it the same way everywhere:
+- **Most public operations return `esp_err_t`.** Check them the same way everywhere:
 
   ```c
   esp_err_t err = core2foraws_motion_accel_get( &x, &y, &z );
@@ -577,8 +579,10 @@ Knowing these conventions makes the whole codebase easy to read.
   ```
 
   Values are returned through output parameters. For example,
-  `core2foraws_display_get_touch_handle(&touch_handle)` returns status separately
-  from the handle.
+  `core2foraws_wifi_state_get(&state)` and
+  `core2foraws_display_get_touch_handle(&touch_handle)` return status separately
+  from the result. The provisioning-state getter returns an enum directly, and
+  `core2foraws_wifi_last_error_get()` returns the stored error value.
 
 - Common codes and their meaning:
   - `ESP_ERR_INVALID_ARG` — a null pointer or out-of-range value you passed.

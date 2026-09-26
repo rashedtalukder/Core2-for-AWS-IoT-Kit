@@ -93,7 +93,7 @@ extern "C"
   * the skipped region is repainted on its next application invalidation.
    *
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_STATE : Library is unable to initialize
    *  - ESP_ERR_NO_MEM        : Insufficient DMA-capable DRAM for the draw

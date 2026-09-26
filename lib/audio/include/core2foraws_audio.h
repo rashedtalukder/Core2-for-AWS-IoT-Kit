@@ -99,7 +99,7 @@ esp_err_t core2foraws_audio_speaker_drain(void);
  * @param[in] state Desired state of the microphone. 1 to enable, 0 to 
  * disable.
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL  : Failed to enable the mic
  */
@@ -155,7 +155,7 @@ esp_err_t core2foraws_audio_mic_enable( bool state );
  * ESP_OK means the entire buffer was accepted; a short successful driver write
  * is reported as ESP_FAIL. Acceptance does not mean playback has finished.
  *
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL  : Failed to write
  */
@@ -227,7 +227,7 @@ esp_err_t core2foraws_audio_speaker_write( const uint8_t *sound_buffer, size_t t
  * The lock prevents microphone disable from deleting the active I2S channel.
  * A timed-out read may still return partial data through was_read_length.
  *
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL  : Failed to read
  */

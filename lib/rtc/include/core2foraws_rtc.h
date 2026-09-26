@@ -63,7 +63,7 @@ extern "C"
   * initialization returns ESP_OK without adding another I2C device handle.
    *
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Driver parameter error
    */
@@ -105,7 +105,7 @@ extern "C"
    *
    * @param[out] time The local date-time converted from RTC UTC time.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -156,7 +156,7 @@ extern "C"
    *
    * @param[in] time The local date-time to set on the RTC.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -198,7 +198,7 @@ extern "C"
    *
    * @param[out] time The UTC date-time read from the RTC.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -241,7 +241,7 @@ extern "C"
    *
    * @param[in] time The UTC date-time to set on the RTC.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -315,7 +315,7 @@ extern "C"
    *
    * @param[out] alarm_time Pointer to the date-time the alarm is set to.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -367,7 +367,7 @@ extern "C"
    *
    * @param[in] alarm_time The date-time the alarm is set to.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -411,7 +411,7 @@ extern "C"
    * @param[in] clear_flag If true, clears the alarm triggered state after
    * reading.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -462,7 +462,7 @@ extern "C"
    * @param[in] clear_flag If true, clears the timer triggered state after
    * reading.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -515,7 +515,7 @@ extern "C"
    * @param[in] clear_mask Bitmask of flags to clear after reading (bitwise OR
    * of rtc_status_flags_t).
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -589,7 +589,7 @@ extern "C"
    *
    * @param[out] seconds Pointer to the number of seconds on the current timer.
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error
    */
@@ -643,7 +643,7 @@ extern "C"
    *
    * @param[in] seconds The number of seconds to set the timer (1-15300).
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_ARG	: Input parameter error (value out of range)
    */
@@ -676,7 +676,7 @@ extern "C"
    * @endcode
    *
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_STATE : RTC not initialized
    */
@@ -707,7 +707,7 @@ extern "C"
    * @endcode
    *
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK                : Success
    *  - ESP_ERR_INVALID_STATE : RTC not initialized
    */

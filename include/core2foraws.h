@@ -98,7 +98,7 @@ extern "C"
   * Repeating this function after a successful call is safe.
    *
    * @return
-   * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.2/esp32/api-reference/system/esp_err.html#macros).
+  * [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
    *  - ESP_OK    : Success
    *  - ESP_FAIL  : Failed to initialize one or more features
   *  - Other     : Original internal-I2C or PMU initialization error

@@ -142,7 +142,7 @@ esp_err_t core2foraws_common_spi_bus_init( void );
  * ESP_FAIL, and zero value as ESP_OK.
  * 
  * @param[in] error_code The error code for a library.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros). 0 or `ESP_OK` if successful.
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros). 0 or `ESP_OK` if successful.
  */
 /* @[declare_core2foraws_common_error] */
 esp_err_t core2foraws_common_error( int32_t error_code );

@@ -56,7 +56,7 @@ extern "C" {
  * @note core2foraws_init() calls this function when the hardware feature is
  * enabled.
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK    : Success
  *  - ESP_FAIL  : Failed to initialize cryptoauthlib library
  */
@@ -104,7 +104,7 @@ esp_err_t core2foraws_crypto_init( void );
  * @param[out] serial_number A pointer to the unique serial number 
  * of the secure element.
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK              : Success
  *  - ESP_ERR_INVALID_ARG : @p serial_number is NULL
  *  - ESP_FAIL            : Failed to get the serial over the I2C bus
@@ -153,7 +153,7 @@ esp_err_t core2foraws_crypto_serial_get( char *serial_number );
  * 
  * @param[out] public_key The preprovisioned public key.
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK              : Success
  *  - ESP_ERR_INVALID_ARG : @p public_key is NULL
  *  - ESP_FAIL            : Failed to get or encode the device public key
@@ -222,7 +222,7 @@ esp_err_t core2foraws_crypto_pubkey_base64_get( char *public_key );
  * @param[out] signature_length Raw signature length on success, or zero if the
  * signing operation fails after argument validation.
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK              : Success
  *  - ESP_ERR_INVALID_ARG : An input or output pointer is NULL
  *  - ESP_FAIL            : The secure element failed to sign the digest
@@ -291,7 +291,7 @@ esp_err_t core2foraws_crypto_sha256_sign( const unsigned char *message, uint8_t 
  * @param[out] verified Set to true only when the signature validates the
  * digest.
  * 
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK               : Verification completed; inspect @p verified
  *  - ESP_ERR_INVALID_ARG  : An input or output pointer is NULL
  *  - ESP_ERR_INVALID_SIZE : @p signature_length is not the required raw size

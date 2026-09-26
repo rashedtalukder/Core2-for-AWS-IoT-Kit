@@ -1,7 +1,7 @@
 # M5Stack Core2 for AWS IoT Kit Board Support Package (BSP)
 
 Version 3.0.0. Licensed under Apache-2.0; see [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt).
-Generate the public API reference with `doxygen Doxyfile` from this directory.
+Generate the API and engineering reference with `doxygen Doxyfile` from this directory; open `generated-docs/html/index.html` to browse it.
 
 This repository contains the drivers specific to the [M5Stack Core2 for AWS IoT Kit](https://m5stack.com/products/m5stack-core2-esp32-iot-development-kit-for-aws-iot-kit) reference Hardware. This BSP is used in the microcontroller tutorials presented in the [AWS IoT Kit](https://aws-iot-kit-docs.m5stack.com) program.
 
@@ -12,7 +12,7 @@ core2foraws.c             BSP initialization entry point
 include/                 Public umbrella header
 lib/<module>/            Module implementation, public headers, chip datasheets
 datasheet/               Board schematics and wiring schema
-docs/                    Architecture and dated verification reports
+docs/                    Architecture and engineering documentation
 tests/host/              Native regression cases and runner
 tests/host/mocks/include/ Host-only SDK declarations
 tests/hardware/          Explicitly opted-in standalone ESP-IDF test application

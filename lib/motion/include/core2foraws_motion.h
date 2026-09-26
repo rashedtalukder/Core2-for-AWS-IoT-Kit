@@ -60,7 +60,7 @@ typedef enum
  * hardware feature is enabled. Repeating this function after successful
  * initialization returns ESP_OK without adding another I2C device handle.
  *
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -97,7 +97,7 @@ esp_err_t core2foraws_motion_init( void );
  * 
  * @param[out] temperature Pointer to the temperature of the MPU6886 
  * passed through the 16-bit ADC.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -137,7 +137,7 @@ esp_err_t core2foraws_motion_temperature_get( float *temperature );
  * the Y direction.
  * @param[out] z Pointer to the 16-bit accelerometer measurement in 
  * the Z direction.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -173,7 +173,7 @@ esp_err_t core2foraws_motion_accel_get( float *x, float *y, float *z );
  * @param[out] pitch Pointer to the 16-bit gyroscope pitch 
  * measurement.
  * @param[out] yaw Pointer to the 16-bit gyroscope yaw measurement.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -203,7 +203,7 @@ esp_err_t core2foraws_motion_gyro_get( float *roll, float *pitch, float *yaw );
  * @param[out] roll Gyroscope roll rate, in degrees per second.
  * @param[out] pitch Gyroscope pitch rate, in degrees per second.
  * @param[out] yaw Gyroscope yaw rate, in degrees per second.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -240,7 +240,7 @@ esp_err_t core2foraws_motion_accel_gyro_get( float *x, float *y, float *z,
  * @endcode
  *
  * @param[in] range The desired accelerometer full-scale range.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */
@@ -275,7 +275,7 @@ esp_err_t core2foraws_motion_accel_range_set( motion_accel_range_t range );
  * @endcode
  *
  * @param[in] range The desired gyroscope full-scale range.
- * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/release-v4.3/esp32/api-reference/system/esp_err.html#macros).
+ * @return [esp_err_t](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/system/esp_err.html#macros).
  *  - ESP_OK                : Success
  *  - ESP_ERR_INVALID_ARG	: Driver parameter error
  */

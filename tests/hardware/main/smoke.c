@@ -418,8 +418,10 @@ static esp_err_t run_checks(void)
         (void)core2foraws_wifi_reconnect(15000);
     else
         EXPECT_RESULT(core2foraws_wifi_provisioning_start(), ESP_OK);
+    core2foraws_wifi_state_t wifi_state;
+    EXPECT_RESULT(core2foraws_wifi_state_get(&wifi_state), ESP_OK);
     ESP_LOGI(TAG, "Wi-Fi connected=%d",
-             core2foraws_wifi_state_get() == CORE2FORAWS_WIFI_STATE_CONNECTED);
+             wifi_state == CORE2FORAWS_WIFI_STATE_CONNECTED);
     core2foraws_common_heap_stats_t initial_heap;
     EXPECT_RESULT(core2foraws_common_heap_report(TAG, &initial_heap), ESP_OK);
     if (xTaskCreatePinnedToCore(motion_range_worker, "motionRange", 4096,

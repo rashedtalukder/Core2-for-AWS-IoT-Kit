@@ -34,7 +34,7 @@
  * @brief Modes supported by the BSP for the GPIO pins.
  *
  * These are the modes supported for the GPIO pins by the BSP.
- * Read more about [UART communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/uart.html).
+ * Read more about [UART communications with the ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/api-reference/peripherals/uart.html).
  */
 /* @[declare_pin_mode_t] */
 typedef enum 
