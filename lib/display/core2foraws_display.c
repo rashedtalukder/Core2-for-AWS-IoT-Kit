@@ -73,8 +73,10 @@ _Static_assert( LCD_DRAW_BUF_BYTES <= CORE2FORAWS_SPI_MAX_TRANSFER_BYTES,
 /* The LVGL task skips a touch sample rather than stall behind another bus
  * user; the next input period retries. Other callers use the normal lock. */
 #define TOUCH_I2C_LOCK_TIMEOUT_MS 10
-/* LVGL (33 ms) and the button task (20 ms) both poll touch. A sample this
- * fresh is shared instead of re-read, roughly halving FT6336 transfers. */
+/* Faster than LVGL's 33 ms default so drags track the finger closely. */
+#define TOUCH_READ_PERIOD_MS 16
+/* LVGL (16 ms) and the button task (20 ms) both poll touch. A sample this
+ * fresh is shared instead of re-read, reducing FT6336 transfers. */
 #define TOUCH_SAMPLE_REUSE_US ( 15 * 1000 )
 /* FT6336U reports at most two simultaneous points (datasheet section 14.1) */
 #define TOUCH_MAX_POINTS    2
@@ -209,10 +211,6 @@ static esp_err_t _touch_io_new(
 static void _display_flush( lv_display_t *display, const lv_area_t *area,
                             uint8_t *color_map )
 {
-    /* Swap before taking the shared bus so the SD card does not wait on it.
-     * A skipped transfer below discards the buffer either way. */
-    lv_draw_rgb565_swap( color_map, lv_area_get_size( area ) );
-
     if( core2foraws_common_spi_semaphore == NULL ||
         xSemaphoreTake( core2foraws_common_spi_semaphore,
                         pdMS_TO_TICKS( CORE2FORAWS_SPI_LOCK_TIMEOUT_MS ) ) !=
@@ -742,6 +740,8 @@ esp_err_t core2foraws_display_init( void )
         .hres          = LCD_H_RES,
         .vres          = LCD_V_RES,
         .monochrome    = false,
+        /* The panel takes big-endian RGB565, so LVGL renders it directly without a flush-time swap. */
+        .color_format  = LV_COLOR_FORMAT_RGB565_SWAPPED,
         .rotation = {
             .swap_xy  = false,
             .mirror_x = false,
@@ -754,7 +754,6 @@ esp_err_t core2foraws_display_init( void )
              * .claude/rules/memory-placement.md. */
             .buff_dma    = true,
             .buff_spiram = false,
-            .swap_bytes  = true,
         },
     };
 
@@ -797,6 +796,8 @@ esp_err_t core2foraws_display_init( void )
         lv_indev_set_type( _touch_indev, LV_INDEV_TYPE_POINTER );
         lv_indev_set_display( _touch_indev, core2foraws_display_ptr );
         lv_indev_set_read_cb( _touch_indev, _lvgl_touch_read );
+        lv_timer_set_period( lv_indev_get_read_timer( _touch_indev ),
+                             TOUCH_READ_PERIOD_MS );
     }
     lvgl_port_unlock();
     if( _touch_indev == NULL )

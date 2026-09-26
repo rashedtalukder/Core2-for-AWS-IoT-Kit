@@ -285,8 +285,9 @@ board-lifetime SPI2 initialization, so display and SD can initialize in either
 order. They are coordinated by the binary
 `core2foraws_common_spi_semaphore`.
 
-The BSP-owned LVGL RGB565 flush callback takes the semaphore, swaps pixel bytes,
-and submits the panel transfer. It gives the semaphore from the SPI
+LVGL renders RGB565 in the panel's big-endian byte order
+(`LV_COLOR_FORMAT_RGB565_SWAPPED`), so the BSP-owned flush callback takes the
+semaphore and submits the panel transfer without a per-pixel swap. It gives the semaphore from the SPI
 color-transfer completion callback. This spans two contexts on
 purpose. `esp_lcd` acquires the ESP-IDF SPI bus lock, sends `RAMWR` with
 `SPI_TRANS_CS_KEEP_ACTIVE`, **queues** the colour transfer, and then releases the
