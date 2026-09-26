@@ -6,7 +6,7 @@
 #
 cmake_minimum_required( VERSION 3.16.0 )
 
-set( CORE2FORAWS_BSP_VERSION "2.1.0" )
+set( CORE2FORAWS_BSP_VERSION "3.0.0" )
 
 set( CORE2FORAWS_SRCS                   "${COMPONENT_DIR}/core2foraws.c" )
 set( CORE2FORAWS_INCLUDE_DIRS           "${COMPONENT_DIR}/include" )
@@ -29,7 +29,6 @@ set( CORE2FORAWS_PRIV_INCLUDEDIRS       )
 set( CORE2FORAWS_PRIV_REQUIRES          "nvs_flash"
                                         "esp_wifi"
                                         "esp_event"
-                                        "network_provisioning"
                                         )
 set( CORE2FORAWS_EXCLUDE_SRCS           )
 set( CORE2FORAWS_LIB                    "${COMPONENT_DIR}/lib" )
@@ -140,11 +139,16 @@ if( CONFIG_SOFTWARE_WIFI_SUPPORT )
     list( APPEND CORE2FORAWS_SRCS           ${CORE2FORAWS_WIFI_SRCS} )
     list( APPEND CORE2FORAWS_INCLUDE_DIRS   ${CORE2FORAWS_WIFI_INCLUDE_DIRS} )
 
-    if( CONFIG_CORE2FORAWS_WIFI_RELEASE_BLE_WHEN_PROVISIONED )
-        list( APPEND CORE2FORAWS_PRIV_REQUIRES  "bt" )
+    if( CONFIG_CORE2FORAWS_WIFI_PROVISIONING )
+        list( APPEND CORE2FORAWS_SRCS           "${CORE2FORAWS_LIB}/wifi/core2foraws_wifi_prov.c" )
+        list( APPEND CORE2FORAWS_PRIV_REQUIRES  "network_provisioning" "protocomm" )
+        if( CONFIG_CORE2FORAWS_WIFI_PROV_CONSOLE_QR )
+            list( APPEND CORE2FORAWS_PRIV_REQUIRES  "qrcode" )
+        endif()
+        if( CONFIG_CORE2FORAWS_WIFI_RELEASE_BLE_WHEN_PROVISIONED )
+            list( APPEND CORE2FORAWS_PRIV_REQUIRES  "bt" )
+        endif()
     endif()
-
-    list( APPEND CORE2FORAWS_PRIV_REQUIRES  "qrcode" )
 endif()
 
 idf_component_register( SRCS                ${CORE2FORAWS_SRCS}

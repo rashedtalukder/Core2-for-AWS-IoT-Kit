@@ -60,10 +60,10 @@ static void wifi_lifecycle_worker(void *argument)
 static void wifi_provisioning_reader(void *argument)
 {
     (void)argument;
-    char payload[WIFI_PROV_STR_LEN];
+    char payload[CORE2FORAWS_WIFI_PROV_PAYLOAD_LEN];
     for (unsigned int iteration = 0; iteration < 100; ++iteration)
     {
-        esp_err_t result = core2foraws_wifi_prov_str_get(payload);
+        esp_err_t result = core2foraws_wifi_provisioning_payload_get(payload, sizeof(payload));
         if (result != ESP_OK && result != ESP_ERR_INVALID_STATE && result != ESP_ERR_TIMEOUT)
             atomic_fetch_add(&wifi_failures, 1);
         if (result == ESP_OK && strstr(payload, "\"transport\":\"ble\"") == NULL)
@@ -413,10 +413,13 @@ static esp_err_t run_checks(void)
     if (atomic_load(&wifi_failures) != 0) return ESP_FAIL;
     ESP_LOGI(TAG, "20 concurrent Wi-Fi init/deinit cycles passed");
     EXPECT_RESULT(core2foraws_wifi_init(), ESP_OK);
-    EXPECT_RESULT(core2foraws_wifi_start(), ESP_OK);
-    EventBits_t bits = xEventGroupWaitBits(wifi_event_group, WIFI_CONNECTED_BIT,
-                                          pdFALSE, pdFALSE, pdMS_TO_TICKS(15000));
-    ESP_LOGI(TAG, "Wi-Fi connected=%d", (bits & WIFI_CONNECTED_BIT) != 0);
+    char saved_ssid[MAX_SSID_LEN + 1];
+    if (core2foraws_wifi_saved_ssid_get(saved_ssid) == ESP_OK)
+        (void)core2foraws_wifi_reconnect(15000);
+    else
+        EXPECT_RESULT(core2foraws_wifi_provisioning_start(), ESP_OK);
+    ESP_LOGI(TAG, "Wi-Fi connected=%d",
+             core2foraws_wifi_state_get() == CORE2FORAWS_WIFI_STATE_CONNECTED);
     core2foraws_common_heap_stats_t initial_heap;
     EXPECT_RESULT(core2foraws_common_heap_report(TAG, &initial_heap), ESP_OK);
     if (xTaskCreatePinnedToCore(motion_range_worker, "motionRange", 4096,

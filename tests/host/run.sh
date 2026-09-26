@@ -66,3 +66,10 @@ done
     -I../../lib/power/include -Imocks/include -I../../lib/common/include \
     test_power.c ../../lib/power/axp192.c -o "$build_dir/test_power"
 "$build_dir/test_power"
+
+"${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Wno-unused-variable -Wno-unused-parameter -g \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -Imocks/wifi -Imocks/include -I../../lib/wifi/include \
+    -DCONFIG_CORE2FORAWS_WIFI_PROVISIONING=1 -DCONFIG_CORE2FORAWS_WIFI_RECONNECT_MAX_BACKOFF_S=32 \
+    test_wifi.c -o "$build_dir/test_wifi"
+"$build_dir/test_wifi"

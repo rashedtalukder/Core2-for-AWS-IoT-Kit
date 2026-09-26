@@ -176,7 +176,7 @@ graph TD
 | button | Automatic when enabled | Poll task and callback mutex | No public deinit; lifetime is the application lifetime |
 | motion / RTC / crypto | Automatic when enabled | Internal-I2C device handles; crypto library state | No public deinit; lifetime is the application lifetime |
 | RGB LED | Automatic when enabled | RMT channel and encoder | `core2foraws_rgb_led_deinit()`; failed cleanup retains resources and blocks init/write until retry succeeds |
-| Wi-Fi | Stack setup is automatic; idempotent `core2foraws_wifi_start()` is explicit | Default STA netif, event handlers/group, Wi-Fi driver, optional provisioning manager | `core2foraws_wifi_deinit()` stops provisioning/radio before releasing BSP-owned resources |
+| Wi-Fi | Stack and driver setup is automatic; the radio starts only on scan, connect, reconnect, or provisioning | Default STA netif, event handlers, persistent `wifi_event_group`, Wi-Fi driver, optional provisioning manager | `core2foraws_wifi_deinit()` cancels a connect attempt, closes provisioning, and stops the radio; saved credentials and `wifi_event_group` are kept |
 | audio | Explicit speaker or microphone enable | I2S_NUM_0 channel; GPIO0 ownership; one lifecycle/data mutex | Disable retains resources on failure; retry false before data I/O or enabling either mode; speaker shutdown hold remains >100 us |
 | SD | Explicit `core2foraws_sd_mount()` | SDSPI device, FAT mount at `/sd_card`, state mutex | `core2foraws_sd_unmount()`; display can run between 4 KiB file-I/O chunks |
 | expansion ports | Port A I2C and Port C UART begin explicitly; Port B operations configure on use | Reopenable external I2C bus with multiple managed devices, or UART2 | Resetting/reassigning either paired pin releases the whole I2C/UART peripheral; `i2c_close()` removes all devices |
@@ -535,14 +535,24 @@ modules. When BSP support is disabled, only `core2foraws_init()` remains exposed
   powered from 5 V, so it only works after the PMU enables the boost rail. A
   module mutex protects color state and channel lifetime; each write waits for
   the prior asynchronous transfer before modifying its DMA source buffer.
-- **wifi** provisions over BLE and stores credentials in NVS, auto re-provisioning
-  after repeated failures. Connection state is published through a FreeRTOS event
-  group. Initialization returns NVS/network errors without erasing the default
-  NVS partition; `core2foraws_wifi_reset()` clears only persistent Wi-Fi state.
-  Start is idempotent. The provisioning payload only exists while a session is
-  live, so `core2foraws_wifi_prov_str_get()` returns `ESP_ERR_INVALID_STATE`
-  until `core2foraws_wifi_start()` has run. Deinit stops an active provisioning
-  manager and radio before destroying the netif/event resources.
+- **wifi** owns the station interface through one state machine. Exactly one
+  of `WIFI_CONNECTED_BIT`, `WIFI_CONNECTING_BIT`, and `WIFI_DISCONNECTED_BIT`
+  is set in `wifi_event_group`, which is created once and never deleted.
+  `core2foraws_wifi_connect()` saves new credentials before the attempt and
+  restores the previous saved network if it fails, so a wrong password never
+  survives. `core2foraws_wifi_reconnect()` keeps the saved network up with
+  exponential backoff until `core2foraws_wifi_disconnect()`, `_forget()`, or
+  repeated authentication failures. `core2foraws_wifi_last_error_get()` reports
+  the reason for the latest failure from either path. Credentials live in the
+  Wi-Fi driver's NVS store, which survives reflashing; the default NVS
+  partition is never erased.
+- **wifi provisioning** (`CONFIG_CORE2FORAWS_WIFI_PROVISIONING`) wraps
+  Espressif's BLE provisioning manager and shares the same credential store.
+  A session reports `WAITING`, `PHONE_CONNECTED`, or `APPLYING`. While a phone
+  is connected or its credentials are being applied, device-side connect and
+  scan return `ESP_ERR_INVALID_STATE`; a session still waiting for a phone is
+  closed by device-side connect. `core2foraws_wifi_provisioning_stop()` is the
+  explicit override.
 - **expports** serializes mode changes and I/O against reset. Port C UART reads
   require destination capacity and never remove more bytes than fit. Port B
   rolls back partial ADC/UART allocation failures and supports raw ADC reads

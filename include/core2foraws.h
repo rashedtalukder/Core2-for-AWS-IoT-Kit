@@ -1,5 +1,5 @@
 /*
- * Core2 for AWS IoT Kit BSP v2.1.0
+ * Core2 for AWS IoT Kit BSP v3.0.0
  * Copyright (C) 2026 Rashed Talukder.  All Rights Reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -63,6 +63,9 @@ extern "C"
 
 #ifdef CONFIG_SOFTWARE_WIFI_SUPPORT
 #include "core2foraws_wifi.h"
+#ifdef CONFIG_CORE2FORAWS_WIFI_PROVISIONING
+#include "core2foraws_wifi_prov.h"
+#endif
 #endif
 #endif
 
@@ -81,8 +84,9 @@ extern "C"
    * If the real-time-clock is enabled, it initializes the RTC driver.
    * If the side RGB LED bars are enabled, it initializes the RGB LED
    * driver.
-  * If Wi-Fi is enabled, it initializes the network stack; call
-  * core2foraws_wifi_start() separately to start Wi-Fi or provisioning.
+  * If Wi-Fi is enabled, it initializes the network stack without starting
+  * the radio; call core2foraws_wifi_reconnect(), core2foraws_wifi_connect(),
+  * or core2foraws_wifi_provisioning_start() to bring up the link.
   * The speaker, microphone (audio), SD card, and expansion-port sessions
   * need to be initialized separately as needed.
   *

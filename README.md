@@ -1,6 +1,6 @@
 # M5Stack Core2 for AWS IoT Kit Board Support Package (BSP)
 
-Version 2.1.0. Licensed under Apache-2.0; see [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt).
+Version 3.0.0. Licensed under Apache-2.0; see [LICENSE](LICENSE), [NOTICE](NOTICE), and [THIRD-PARTY-LICENSES.txt](THIRD-PARTY-LICENSES.txt).
 Generate the public API reference with `doxygen Doxyfile` from this directory.
 
 This repository contains the drivers specific to the [M5Stack Core2 for AWS IoT Kit](https://m5stack.com/products/m5stack-core2-esp32-iot-development-kit-for-aws-iot-kit) reference Hardware. This BSP is used in the microcontroller tutorials presented in the [AWS IoT Kit](https://aws-iot-kit-docs.m5stack.com) program.
@@ -60,7 +60,7 @@ API safety notes for this revision:
 - Resetting or reassigning one active I2C/UART expansion pin releases the full pair. Re-register Port A devices after reopening; old handles are invalid.
 - Motion range/cache changes are serialized with scaled reads. This prevents mixed software scale factors, not physical sensor settling after range changes.
 - Direct MCU-rail changes are protected: DCDC1 cannot be disabled or set to anything other than 3350 mV, including through BSP raw PMU helpers. Normal whole-device shutdown remains available through `core2foraws_power_off()` (AXP192 REG32H bit 7), preserving rail/startup configuration for power-key restart. Stop workers, close SD, and commit NVS first. Direct I2C outside the power module is not covered; see [docs/design.md](docs/design.md), section 6.1.
-- Wi-Fi init/start/deinit and provisioning reads share one lifecycle lock. First-use mutex waiters block briefly instead of starving lower-priority initialization tasks.
+- Wi-Fi is owned by one BSP state machine; applications must not call `esp_wifi_connect()`, `esp_wifi_disconnect()`, `esp_wifi_set_config()`, or `esp_wifi_stop()` directly. All lifecycle, scan, connect, and provisioning calls share one lock. First-use mutex waiters block briefly instead of starving lower-priority initialization tasks.
 - Tests may write the dedicated SD file and NVS namespace, but must not modify secure-element slots, keys, locks, counters, or MCU rail/startup configuration. A supervised normal off/on test is permitted; making the MCU unreachable on restart is not.
 - Use `core2foraws_display_touch_data_get()` instead of reading the raw touch handle; it participates in internal-I2C serialization.
 - Physical touch reads are interrupt-gated and use a BSP-owned 100 ms transport timeout, preventing an unresponsive controller from monopolizing the shared internal-I2C bus.
@@ -103,7 +103,7 @@ If you need more internal DRAM, apply these in your application's `sdkconfig` (a
 | --- | --- |
 | `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y` | Moves Wi-Fi and LWIP buffers to PSRAM. Usually the largest win (~62 KB internal DRAM freed in testing). |
 | `CONFIG_LV_USE_CLIB_MALLOC=y` | LVGL's heap uses the C-library allocator so it can spill to PSRAM, instead of reserving a fixed 64 KB pool in internal DRAM up-front. The DMA draw buffers still stay internal, so display throughput is unaffected. |
-| `CONFIG_CORE2FORAWS_WIFI_RELEASE_BLE_WHEN_PROVISIONED=y` | Frees the Bluetooth controller's reserved DRAM when credentials already exist. BLE is then unavailable until reboot. |
+| `CONFIG_CORE2FORAWS_WIFI_RELEASE_BLE_WHEN_PROVISIONED=y` | Frees the Bluetooth controller's reserved DRAM once Wi-Fi connects or a provisioning session ends. BLE and re-provisioning are then unavailable until reboot. |
 | `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=4096` | Routes general heap allocations ≥ 4 KB to PSRAM by default (lower than the 16 KB IDF default). |
 | `CONFIG_MBEDTLS_DYNAMIC_BUFFER=y` | Releases the large TLS handshake buffers after each handshake completes, lowering peak internal usage. |
 | `CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM` (lower it cautiously) | Each static TX buffer costs ~1.6 KB of internal DRAM. IDF 6 requires static TX while `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y`; dynamic TX cannot be combined with that larger PSRAM saving. |

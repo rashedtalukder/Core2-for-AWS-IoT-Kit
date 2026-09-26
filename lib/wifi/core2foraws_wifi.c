@@ -1,21 +1,15 @@
 /*
- * Core2 for AWS IoT Kit BSP v2.1.0
+ * Core2 for AWS IoT Kit BSP v3.0.0
  * Copyright (C) 2026 Rashed Talukder.  All Rights Reserved.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* This library referenced the Espressif Systems (Shanghai) PTE LTD's, Public Domain
- * provisioning example:
- * https://github.com/espressif/esp-idf/tree/release/v4.3/examples/provisioning/wifi_prov_mgr
-*/
-
 /**
  * @file core2foraws_wifi.c
- * @brief Core2 for AWS IoT Kit Wi-Fi helper APIs
+ * @brief Core2 for AWS IoT Kit Wi-Fi station state machine.
  */
 
-#include <stdio.h>
 #include <string.h>
 #include <stdatomic.h>
 #include <sdkconfig.h>
@@ -23,758 +17,717 @@
 #include <esp_timer.h>
 #include <esp_wifi.h>
 #include <esp_event.h>
+#include <esp_netif.h>
 #include <nvs_flash.h>
-#include <network_provisioning/manager.h>
-#include <network_provisioning/scheme_ble.h>
-#ifdef CONFIG_CORE2FORAWS_WIFI_RELEASE_BLE_WHEN_PROVISIONED
-#include <esp_bt.h>
-#endif
-
-#include "qrcode.h"
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 #include "core2foraws_wifi.h"
-#include "core2foraws_common.h"
+#include "core2foraws_wifi_priv.h"
 
-#define PROV_QR_VERSION "v1"
-#define PROV_TRANSPORT  "ble"
-#define PROV_POP_STR_SIZE    9
-#define QRCODE_BASE_URL "https://espressif.github.io/esp-jumpstart/qrcode.html"
+#define WIFI_LINK_BITS           ( WIFI_CONNECTED_BIT | WIFI_DISCONNECTED_BIT | WIFI_CONNECTING_BIT )
+/* Private wifi_event_group bits */
+#define WIFI_ATTEMPT_DONE_BIT    BIT4
+#define WIFI_LINK_DOWN_BIT       BIT5
+#define WIFI_STA_STARTED_BIT     BIT6
 
-/* The first reconnect is immediate; later ones back off 1, 2, 4 ... 32 s so
- * an absent AP does not keep the radio busy (and competing with BLE). */
+#define WIFI_CONNECT_ATTEMPTS    3U
 #define WIFI_RECONNECT_BASE_MS   1000U
-#define WIFI_RECONNECT_MAX_SHIFT 5U
+#define WIFI_LINK_DOWN_WAIT_MS   500U
+#define WIFI_RADIO_START_WAIT_MS 1000U
+#define WIFI_LOCK_TIMEOUT_MS     1000U
+
+typedef enum
+{
+    ATTEMPT_NONE = 0,
+    ATTEMPT_ACTIVE,
+    ATTEMPT_FINISHING,
+} wifi_attempt_t;
 
 static const char *_TAG = "CORE2FORAWS_WIFI";
 
 EventGroupHandle_t wifi_event_group = NULL;
+static StaticEventGroup_t _event_group_storage;
 
-static esp_netif_t *_wifi_netif = NULL;
-static SemaphoreHandle_t _service_name_mutex = NULL;
-static bool _wifi_initialized = false;
-static atomic_bool _wifi_started;
-static atomic_bool _scan_only;
-static atomic_bool _provisioning_active;
-static esp_timer_handle_t _reconnect_timer = NULL;
+static StaticSemaphore_t _lock_storage;
+static SemaphoreHandle_t _lock = NULL;
+static atomic_uchar _lock_state;
+
+static bool _initialized;
+static esp_netif_t *_netif;
+static esp_timer_handle_t _reconnect_timer;
+static atomic_bool _auto_reconnect;
 static atomic_uint _reconnect_failures;
-static StaticSemaphore_t _wifi_lifecycle_mutex_storage;
-static SemaphoreHandle_t _wifi_lifecycle_mutex = NULL;
-static atomic_uchar _wifi_lifecycle_mutex_state;
-static char service_name[ 19 ];
+static atomic_int _state = CORE2FORAWS_WIFI_STATE_IDLE;
+static atomic_int _last_error;
+static atomic_int _attempt = ATTEMPT_NONE;
+static atomic_uint _attempt_failures;
+/* Saved network restored when a connect attempt fails; owned by whoever claims the attempt. */
+static wifi_config_t _previous;
 
-static esp_err_t _get_pop( char *pop, size_t pop_size );
-static void _on_prov_event_handler( void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data );
-static void _on_got_ip( void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data );
-static void _on_wifi_start( void *esp_netif, esp_event_base_t event_base, int32_t event_id, void *event_data );
-static void _on_wifi_connect( void *esp_netif, esp_event_base_t event_base, int32_t event_id, void *event_data );
-static void _on_wifi_disconnect( void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data );
-static esp_err_t _device_service_name_set( void );
-static esp_err_t _wifi_prov_qr_print( void );
-static esp_err_t _core2foraws_wifi_start_locked( void );
-static esp_err_t _core2foraws_wifi_deinit_locked( void );
-static esp_err_t _wifi_prov_str_get_locked( char *wifi_prov_str );
-
-static esp_err_t _wifi_lifecycle_lock( void )
+esp_err_t core2foraws_wifi_priv_lock( void )
 {
-    if( atomic_load( &_wifi_lifecycle_mutex_state ) != 2 )
+    if( atomic_load( &_lock_state ) != 2 )
     {
         unsigned char expected = 0;
-        if( atomic_compare_exchange_strong( &_wifi_lifecycle_mutex_state,
-                                            &expected, 1 ) )
+        if( atomic_compare_exchange_strong( &_lock_state, &expected, 1 ) )
         {
-            _wifi_lifecycle_mutex = xSemaphoreCreateMutexStatic(
-                &_wifi_lifecycle_mutex_storage );
-            atomic_store( &_wifi_lifecycle_mutex_state,
-                          _wifi_lifecycle_mutex != NULL ? 2 : 0 );
+            _lock = xSemaphoreCreateMutexStatic( &_lock_storage );
+            atomic_store( &_lock_state, _lock != NULL ? 2 : 0 );
         }
         else
         {
-            while( atomic_load( &_wifi_lifecycle_mutex_state ) == 1 )
-                vTaskDelay( 1 );
+            while( atomic_load( &_lock_state ) == 1 ) vTaskDelay( 1 );
         }
     }
 
-    if( _wifi_lifecycle_mutex == NULL ) return ESP_ERR_NO_MEM;
-    return xSemaphoreTake( _wifi_lifecycle_mutex, pdMS_TO_TICKS( 1000 ) ) ==
-                   pdTRUE
+    if( _lock == NULL ) return ESP_ERR_NO_MEM;
+    return xSemaphoreTake( _lock, pdMS_TO_TICKS( WIFI_LOCK_TIMEOUT_MS ) ) == pdTRUE
                ? ESP_OK
                : ESP_ERR_TIMEOUT;
 }
 
-static void _wifi_lifecycle_unlock( void )
+void core2foraws_wifi_priv_unlock( void )
 {
-    xSemaphoreGive( _wifi_lifecycle_mutex );
+    xSemaphoreGive( _lock );
 }
 
-static esp_err_t _get_pop( char *pop, size_t pop_size )
+bool core2foraws_wifi_priv_initialized( void )
 {
-    uint8_t eth_mac[ 6 ];
-    esp_err_t err = esp_wifi_get_mac( WIFI_IF_STA, eth_mac );
-    if ( err == ESP_OK )
-    {
-        snprintf( pop, pop_size, "%02x%02x%02x%02x", eth_mac[ 2 ], eth_mac[ 3 ], eth_mac[ 4 ], eth_mac[ 5 ] );
-        return ESP_OK;
-    }
-
-    ESP_LOGE( _TAG, "Failed to get MAC address to generate PoP: 0x%x", err );
-    return err;
+    return _initialized;
 }
 
-static void _on_prov_event_handler( void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data )
+bool core2foraws_wifi_priv_attempt_active( void )
 {
-    static uint8_t _retries;
-    
-    if ( event_id == NETWORK_PROV_START )
-        ESP_LOGI( _TAG, "\tProvisioning started" );
-    else if ( event_id == NETWORK_PROV_WIFI_CRED_RECV )
+    return atomic_load( &_attempt ) != ATTEMPT_NONE;
+}
+
+void core2foraws_wifi_priv_link_state_set( core2foraws_wifi_state_t state )
+{
+    atomic_store( &_state, state );
+    EventBits_t bit = state == CORE2FORAWS_WIFI_STATE_CONNECTED  ? WIFI_CONNECTED_BIT :
+                      state == CORE2FORAWS_WIFI_STATE_CONNECTING ? WIFI_CONNECTING_BIT :
+                                                                   WIFI_DISCONNECTED_BIT;
+    /* Set before clearing so a waiter never observes no link bit */
+    xEventGroupSetBits( wifi_event_group, bit );
+    xEventGroupClearBits( wifi_event_group, WIFI_LINK_BITS & ~bit );
+}
+
+void core2foraws_wifi_priv_last_error_set( esp_err_t err )
+{
+    atomic_store( &_last_error, err );
+}
+
+void core2foraws_wifi_priv_link_yield( void )
+{
+    atomic_store( &_auto_reconnect, false );
+    if( _reconnect_timer != NULL ) ( void )esp_timer_stop( _reconnect_timer );
+}
+
+static esp_err_t _error_from_reason( uint8_t reason )
+{
+    switch( reason )
     {
-        wifi_sta_config_t *wifi_sta_cfg = ( wifi_sta_config_t * )event_data;
-        ESP_LOGI( _TAG, "\tReceived Wi-Fi credentials"
-                    "\n\tSSID     : %s",
-                    ( const char * ) wifi_sta_cfg->ssid );
-        /* Never log the plaintext password. Log its length only so the
-           credential delivery can still be debugged without leaking the
-           secret over the UART console. */
-        ESP_LOGD( _TAG, "\tPassword : (%u characters received)",
-                    ( unsigned int ) strlen( ( const char * ) wifi_sta_cfg->password ) );
-    }
-    else if ( event_id == NETWORK_PROV_WIFI_CRED_FAIL )
-    {
-        network_prov_wifi_sta_fail_reason_t *reason = (network_prov_wifi_sta_fail_reason_t *)event_data;
-        ESP_LOGE( _TAG, "\tProvisioning failed!\n\tReason : %s"
-                    "\n\tWi-Fi will erase the credentials and restart provisioning in %d retries",
-                    ( *reason == NETWORK_PROV_WIFI_STA_AUTH_ERROR ) ?
-                    "Wi-Fi station authentication failed" : "Wi-Fi access-point not found",
-                    WIFI_RETRIES_MAX_FAILS - _retries );
-        _retries++;
-        if ( _retries >= WIFI_RETRIES_MAX_FAILS )
-        {
-            ESP_LOGI( _TAG, "\tFailed to connect with provisioned AP, reseting provisioned credentials" );
-            network_prov_mgr_reset_wifi_sm_state_on_failure();
-            _retries = 0;
-        }
-    }
-    else if ( event_id == NETWORK_PROV_WIFI_CRED_SUCCESS )
-    {
-        ESP_LOGI( _TAG, "\tProvisioning successful");
-        _retries = 0;
-    }
-    else if ( event_id == NETWORK_PROV_END )
-    {
-        if( atomic_exchange( &_provisioning_active, false ) )
-        {
-            network_prov_mgr_deinit();
-        }
+        case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_MIC_FAILURE:
+        case WIFI_REASON_802_1X_AUTH_FAILED:
+            return ESP_ERR_WIFI_PASSWORD;
+        case WIFI_REASON_NO_AP_FOUND:
+        case WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY:
+        case WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD:
+        case WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD:
+            return ESP_ERR_NOT_FOUND;
+        default:
+            return ESP_FAIL;
     }
 }
 
-static void _on_got_ip( void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data )
+static bool _attempt_claim( void )
 {
-    if ( event_id == IP_EVENT_STA_GOT_IP )
+    int expected = ATTEMPT_ACTIVE;
+    return atomic_compare_exchange_strong( &_attempt, &expected, ATTEMPT_FINISHING );
+}
+
+/* Only the caller that won _attempt_claim() may finish the attempt. */
+static void _attempt_finish( esp_err_t result )
+{
+    if( result != ESP_OK )
     {
-        ip_event_got_ip_t *event = ( ip_event_got_ip_t * )event_data;
+        esp_err_t err = esp_wifi_set_config( WIFI_IF_STA, &_previous );
+        if( err != ESP_OK ) ESP_LOGE( _TAG, "\tFailed to restore the saved network: 0x%x", err );
+        core2foraws_wifi_priv_last_error_set( result );
+        core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_DISCONNECTED );
+    }
+    memset( &_previous, 0, sizeof( _previous ) );
+    atomic_store( &_attempt, ATTEMPT_NONE );
+    xEventGroupSetBits( wifi_event_group, WIFI_ATTEMPT_DONE_BIT );
+}
 
-        ESP_LOGI( _TAG, "\tGot IPv4 address: " IPSTR, IP2STR( &event->ip_info.ip ) );
+static bool _radio_started( void )
+{
+    return ( xEventGroupGetBits( wifi_event_group ) & WIFI_STA_STARTED_BIT ) != 0;
+}
 
-        atomic_store( &_reconnect_failures, 0 );
-
-        xEventGroupClearBits( wifi_event_group, WIFI_DISCONNECTED_BIT );
-        xEventGroupClearBits( wifi_event_group, WIFI_CONNECTING_BIT );
-        xEventGroupSetBits( wifi_event_group, WIFI_CONNECTED_BIT );
+/* Disconnect and wait briefly for the driver's event so it cannot be misread later. */
+static void _station_disconnect_wait( void )
+{
+    xEventGroupClearBits( wifi_event_group, WIFI_LINK_DOWN_BIT );
+    if( esp_wifi_disconnect() == ESP_OK )
+    {
+        xEventGroupWaitBits( wifi_event_group, WIFI_LINK_DOWN_BIT, pdTRUE, pdTRUE,
+                             pdMS_TO_TICKS( WIFI_LINK_DOWN_WAIT_MS ) );
     }
 }
 
-static void _on_wifi_start( void *esp_netif, esp_event_base_t event_base, int32_t event_id, void *event_data )
+static void _attempt_cancel( esp_err_t result )
 {
-    ESP_LOGI( _TAG, "\tStarting Wi-Fi... %ld", (long)event_id );
-    xEventGroupSetBits( wifi_event_group, WIFI_DISCONNECTED_BIT );
-    if (!atomic_load(&_scan_only)) esp_wifi_connect();
+    if( !_attempt_claim() ) return;
+    _station_disconnect_wait();
+    _attempt_finish( result );
 }
 
-static void _on_wifi_connect( void *esp_netif, esp_event_base_t event_base, int32_t event_id, void *event_data )
+static void _reconnect_now( void )
 {
-    ESP_LOGI( _TAG, "\tConnected" );
-}
-
-static void _wifi_reconnect( void )
-{
-    if( atomic_load( &_scan_only ) || !atomic_load( &_wifi_started ) ) return;
+    if( !atomic_load( &_auto_reconnect ) || atomic_load( &_attempt ) != ATTEMPT_NONE ) return;
 
     esp_err_t err = esp_wifi_connect();
-    if ( err != ESP_OK )
-    {
-        ESP_LOGE( _TAG, "\tReconnect failed: 0x%x", err );
-        return;
-    }
-
-    xEventGroupSetBits( wifi_event_group, WIFI_CONNECTING_BIT );
+    if( err != ESP_OK ) ESP_LOGE( _TAG, "\tReconnect failed to start: 0x%x", err );
 }
 
 static void _on_reconnect_timer( void *arg )
 {
     ( void )arg;
-    _wifi_reconnect();
+    _reconnect_now();
 }
 
-static void _on_wifi_disconnect( void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data )
+static void _reconnect_schedule( uint8_t reason )
 {
-    const wifi_event_sta_disconnected_t *event = event_data;
-    xEventGroupClearBits( wifi_event_group, WIFI_CONNECTED_BIT );
-    xEventGroupSetBits( wifi_event_group, WIFI_DISCONNECTED_BIT );
-
-    if( atomic_load( &_scan_only ) || !atomic_load( &_wifi_started ) )
-    {
-        ESP_LOGI( _TAG, "\tDisconnected (reason %u)",
-                  event != NULL ? event->reason : 0 );
-        return;
-    }
-
+    /* The first retry is immediate; later ones back off exponentially up to the Kconfig cap */
     unsigned int failures = atomic_fetch_add( &_reconnect_failures, 1 );
-    uint32_t delay_ms = 0;
+    uint64_t delay_ms = 0;
     if( failures > 0 )
     {
-        unsigned int shift = failures - 1;
-        if( shift > WIFI_RECONNECT_MAX_SHIFT ) shift = WIFI_RECONNECT_MAX_SHIFT;
-        delay_ms = WIFI_RECONNECT_BASE_MS << shift;
+        unsigned int shift = failures - 1 < 16 ? failures - 1 : 16;
+        delay_ms = ( uint64_t )WIFI_RECONNECT_BASE_MS << shift;
+        uint64_t max_ms = ( uint64_t )CONFIG_CORE2FORAWS_WIFI_RECONNECT_MAX_BACKOFF_S * 1000U;
+        if( delay_ms > max_ms ) delay_ms = max_ms;
     }
 
-    /* wifi_err_reason_t values are listed in esp_wifi_types.h */
-    ESP_LOGW( _TAG, "\tDisconnected (reason %u, RSSI %d dBm), reconnect attempt %u in %lu ms",
-              event != NULL ? event->reason : 0,
-              event != NULL ? event->rssi : 0,
-              failures + 1, ( unsigned long ) delay_ms );
+    ESP_LOGW( _TAG, "\tLink lost (reason %u), reconnect attempt %u in %llu ms",
+              reason, failures + 1, ( unsigned long long )delay_ms );
 
     if( delay_ms == 0 || _reconnect_timer == NULL )
     {
-        _wifi_reconnect();
+        _reconnect_now();
         return;
     }
 
     ( void )esp_timer_stop( _reconnect_timer );
-    esp_err_t err = esp_timer_start_once( _reconnect_timer,
-                                          ( uint64_t ) delay_ms * 1000U );
-    if( err != ESP_OK )
+    esp_err_t err = esp_timer_start_once( _reconnect_timer, delay_ms * 1000U );
+    if( err != ESP_OK ) ESP_LOGE( _TAG, "\tFailed to schedule reconnect: 0x%x", err );
+}
+
+static void _on_got_ip( void *arg, esp_event_base_t base, int32_t id, void *data )
+{
+    ( void )arg; ( void )base; ( void )id;
+    const ip_event_got_ip_t *event = data;
+    ESP_LOGI( _TAG, "\tGot IPv4 address: " IPSTR, IP2STR( &event->ip_info.ip ) );
+
+    atomic_store( &_reconnect_failures, 0 );
+    atomic_store( &_auto_reconnect, true );
+    core2foraws_wifi_priv_last_error_set( ESP_OK );
+    core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_CONNECTED );
+    if( _attempt_claim() ) _attempt_finish( ESP_OK );
+    core2foraws_wifi_priv_prov_on_connected();
+}
+
+static void _on_sta_start( void *arg, esp_event_base_t base, int32_t id, void *data )
+{
+    ( void )arg; ( void )base; ( void )id; ( void )data;
+    xEventGroupSetBits( wifi_event_group, WIFI_STA_STARTED_BIT );
+    if( atomic_load( &_state ) == CORE2FORAWS_WIFI_STATE_IDLE )
     {
-        ESP_LOGE( _TAG, "\tFailed to schedule reconnect: 0x%x", err );
+        core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_DISCONNECTED );
     }
 }
 
-static esp_err_t _device_service_name_set( void )
+static void _on_sta_stop( void *arg, esp_event_base_t base, int32_t id, void *data )
 {
-    uint8_t eth_mac[ 6 ];
-    const char *ssid_prefix = "CORE2FORAWS_";
-    esp_err_t err = esp_wifi_get_mac( WIFI_IF_STA, eth_mac );
-    if ( err != ESP_OK )
-    {
-        ESP_LOGE( _TAG, "Failed to get MAC address to set service name: 0x%x", err );
-        return err;
-    }
-
-    if ( xSemaphoreTake( _service_name_mutex, pdMS_TO_TICKS( 40 ) ) == pdTRUE )
-    {
-        snprintf( service_name, sizeof( service_name ), "%s%02X%02X%02X",
-                ssid_prefix, eth_mac[ 3 ], eth_mac[ 4 ], eth_mac[ 5 ] );
-        xSemaphoreGive( _service_name_mutex );
-        return ESP_OK;
-    }
-
-    ESP_LOGE( _TAG, "Failed to set service name." );
-    return ESP_ERR_TIMEOUT;
+    ( void )arg; ( void )base; ( void )id; ( void )data;
+    xEventGroupClearBits( wifi_event_group, WIFI_STA_STARTED_BIT );
+    core2foraws_wifi_priv_link_yield();
+    core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_IDLE );
 }
 
-static esp_err_t _wifi_prov_qr_print( void )
+static void _on_sta_disconnected( void *arg, esp_event_base_t base, int32_t id, void *data )
 {
-    char provisioning_payload[ WIFI_PROV_STR_LEN ] = { 0 };
-    esp_err_t err = _wifi_prov_str_get_locked( provisioning_payload );
+    ( void )arg; ( void )base; ( void )id;
+    const wifi_event_sta_disconnected_t *event = data;
+    uint8_t reason = event != NULL ? event->reason : 0;
+    esp_err_t err = _error_from_reason( reason );
+    xEventGroupSetBits( wifi_event_group, WIFI_LINK_DOWN_BIT );
 
-    if ( err == ESP_OK )
+    if( atomic_load( &_attempt ) == ATTEMPT_ACTIVE )
     {
-        ESP_LOGI( _TAG, "\tScan this QR code from the provisioning application for Wi-Fi provisioning." );
-        esp_qrcode_config_t cfg = ESP_QRCODE_CONFIG_DEFAULT();
-        err = esp_qrcode_generate( &cfg, provisioning_payload );
-        ESP_LOGI( _TAG, "\tIf QR code is not visible, copy paste the below URL in a browser.\n%s?data=%s", QRCODE_BASE_URL, provisioning_payload);
+        /* A wrong password fails the same way every time, so only retry other reasons */
+        if( err != ESP_ERR_WIFI_PASSWORD &&
+            atomic_fetch_add( &_attempt_failures, 1 ) + 1 < WIFI_CONNECT_ATTEMPTS &&
+            esp_wifi_connect() == ESP_OK )
+        {
+            ESP_LOGW( _TAG, "\tConnect attempt failed (reason %u), retrying", reason );
+            return;
+        }
+        ESP_LOGW( _TAG, "\tConnect failed (reason %u)", reason );
+        if( _attempt_claim() ) _attempt_finish( err );
+        return;
     }
 
-    return err;
+    /* The provisioning manager drives the station while it applies phone credentials */
+    if( core2foraws_wifi_priv_prov_state() == CORE2FORAWS_WIFI_PROV_APPLYING ) return;
+
+    if( !atomic_load( &_auto_reconnect ) )
+    {
+        ESP_LOGI( _TAG, "\tDisconnected (reason %u)", reason );
+        core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_DISCONNECTED );
+        return;
+    }
+
+    core2foraws_wifi_priv_last_error_set( err );
+    /* One handshake failure can be radio noise; repeated ones mean the saved password changed */
+    if( err == ESP_ERR_WIFI_PASSWORD &&
+        atomic_load( &_reconnect_failures ) + 1 >= WIFI_CONNECT_ATTEMPTS )
+    {
+        ESP_LOGW( _TAG, "\tSaved password rejected (reason %u); not retrying", reason );
+        core2foraws_wifi_priv_link_yield();
+        core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_DISCONNECTED );
+        return;
+    }
+
+    core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_CONNECTING );
+    _reconnect_schedule( reason );
 }
 
-static esp_err_t _core2foraws_wifi_init_locked( void )
+typedef struct
 {
-    if ( _wifi_initialized )
-    {
-        return ESP_OK;
-    }
+    const esp_event_base_t *base;
+    int32_t id;
+    esp_event_handler_t handler;
+} wifi_handler_t;
 
-    bool ip_handler_registered = false;
-    bool wifi_start_handler_registered = false;
-    bool wifi_connected_handler_registered = false;
-    bool wifi_disconnected_handler_registered = false;
-    bool provisioning_handler_registered = false;
+static const wifi_handler_t _handlers[] =
+{
+    { &IP_EVENT,   IP_EVENT_STA_GOT_IP,         _on_got_ip },
+    { &WIFI_EVENT, WIFI_EVENT_STA_START,        _on_sta_start },
+    { &WIFI_EVENT, WIFI_EVENT_STA_STOP,         _on_sta_stop },
+    { &WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, _on_sta_disconnected },
+};
+#define WIFI_HANDLER_COUNT ( sizeof( _handlers ) / sizeof( _handlers[ 0 ] ) )
+
+static esp_err_t _handlers_unregister( size_t count )
+{
+    esp_err_t ret = ESP_OK;
+    while( count-- > 0 )
+    {
+        esp_err_t err = esp_event_handler_unregister( *_handlers[ count ].base, _handlers[ count ].id,
+                                                      _handlers[ count ].handler );
+        if( err != ESP_OK && ret == ESP_OK ) ret = err;
+    }
+    return ret;
+}
+
+static esp_err_t _init_locked( void )
+{
+    if( _initialized ) return ESP_OK;
+
+    if( wifi_event_group == NULL )
+    {
+        wifi_event_group = xEventGroupCreateStatic( &_event_group_storage );
+        core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_IDLE );
+    }
 
     esp_err_t err = nvs_flash_init();
-    if ( err != ESP_OK )
+    if( err != ESP_OK )
     {
         ESP_LOGE( _TAG, "NVS initialization failed without erasing application data: 0x%x", err );
         return err;
     }
 
-    ESP_LOGI( _TAG, "\tInitializing" );
-
-    /* Initialize TCP/IP */
     err = esp_netif_init();
-    if ( err != ESP_OK )
-    {
-        ESP_LOGE( _TAG, "TCP/IP initialization failed: 0x%x", err );
-        return err;
-    }
+    if( err != ESP_OK ) return err;
 
-    /* Initialize the event loop */
     err = esp_event_loop_create_default();
-    if ( err != ESP_OK && err != ESP_ERR_INVALID_STATE )
-    {
-        ESP_LOGE( _TAG, "Default event loop initialization failed: 0x%x", err );
-        return err;
-    }
+    if( err != ESP_OK && err != ESP_ERR_INVALID_STATE ) return err;
 
-    wifi_event_group = xEventGroupCreate();
-    if ( wifi_event_group == NULL )
+    const esp_timer_create_args_t timer_args =
     {
-        return ESP_ERR_NO_MEM;
-    }
-
-    /* Initialize Wi-Fi including netif with default config */
-    const esp_timer_create_args_t reconnect_timer_args = {
         .callback = _on_reconnect_timer,
         .name = "wifiReconnect",
     };
-    err = esp_timer_create( &reconnect_timer_args, &_reconnect_timer );
-    if ( err != ESP_OK )
+    err = esp_timer_create( &timer_args, &_reconnect_timer );
+    if( err != ESP_OK )
     {
         _reconnect_timer = NULL;
-        goto cleanup;
+        return err;
     }
 
-    _wifi_netif = esp_netif_create_default_wifi_sta();
-    if ( _wifi_netif == NULL )
+    size_t registered = 0;
+    bool driver_initialized = false;
+    _netif = esp_netif_create_default_wifi_sta();
+    if( _netif == NULL )
     {
         err = ESP_ERR_NO_MEM;
         goto cleanup;
     }
 
-    err = esp_event_handler_register( IP_EVENT, ESP_EVENT_ANY_ID, &_on_got_ip, NULL );
-    if ( err != ESP_OK ) goto cleanup;
-    ip_handler_registered = true;
+    for( ; registered < WIFI_HANDLER_COUNT; registered++ )
+    {
+        err = esp_event_handler_register( *_handlers[ registered ].base, _handlers[ registered ].id,
+                                          _handlers[ registered ].handler, NULL );
+        if( err != ESP_OK ) goto cleanup;
+    }
 
-    err = esp_event_handler_register( WIFI_EVENT, WIFI_EVENT_STA_START, &_on_wifi_start, _wifi_netif );
-    if ( err != ESP_OK ) goto cleanup;
-    wifi_start_handler_registered = true;
+    wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
+    err = esp_wifi_init( &config );
+    if( err != ESP_OK ) goto cleanup;
+    driver_initialized = true;
 
-    err = esp_event_handler_register( WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &_on_wifi_connect, _wifi_netif );
-    if ( err != ESP_OK ) goto cleanup;
-    wifi_connected_handler_registered = true;
+    err = esp_wifi_set_mode( WIFI_MODE_STA );
+    if( err == ESP_OK ) err = core2foraws_wifi_priv_prov_init();
+    if( err != ESP_OK ) goto cleanup;
 
-    err = esp_event_handler_register( WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &_on_wifi_disconnect, NULL );
-    if ( err != ESP_OK ) goto cleanup;
-    wifi_disconnected_handler_registered = true;
-
-    err = esp_event_handler_register( NETWORK_PROV_EVENT, ESP_EVENT_ANY_ID, &_on_prov_event_handler, NULL );
-    if ( err != ESP_OK ) goto cleanup;
-    provisioning_handler_registered = true;
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    err = esp_wifi_init( &cfg );
-    if ( err != ESP_OK ) goto cleanup;
-
-    _wifi_initialized = true;
+    _initialized = true;
     ESP_LOGD( _TAG, "Initialized" );
-
     return ESP_OK;
 
 cleanup:
     ESP_LOGE( _TAG, "Wi-Fi initialization failed: 0x%x", err );
-
-    if ( provisioning_handler_registered )
-        esp_event_handler_unregister( NETWORK_PROV_EVENT, ESP_EVENT_ANY_ID, &_on_prov_event_handler );
-    if ( wifi_disconnected_handler_registered )
-        esp_event_handler_unregister( WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &_on_wifi_disconnect );
-    if ( wifi_connected_handler_registered )
-        esp_event_handler_unregister( WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &_on_wifi_connect );
-    if ( wifi_start_handler_registered )
-        esp_event_handler_unregister( WIFI_EVENT, WIFI_EVENT_STA_START, &_on_wifi_start );
-    if ( ip_handler_registered )
-        esp_event_handler_unregister( IP_EVENT, ESP_EVENT_ANY_ID, &_on_got_ip );
-
-    if ( _wifi_netif != NULL )
+    if( driver_initialized ) ( void )esp_wifi_deinit();
+    ( void )_handlers_unregister( registered );
+    if( _netif != NULL )
     {
-        esp_wifi_clear_default_wifi_driver_and_handlers( _wifi_netif );
-        esp_netif_destroy( _wifi_netif );
-        _wifi_netif = NULL;
+        esp_wifi_clear_default_wifi_driver_and_handlers( _netif );
+        esp_netif_destroy( _netif );
+        _netif = NULL;
     }
-
-    if ( _reconnect_timer != NULL )
-    {
-        esp_timer_delete( _reconnect_timer );
-        _reconnect_timer = NULL;
-    }
-
-    vEventGroupDelete( wifi_event_group );
-    wifi_event_group = NULL;
-
+    esp_timer_delete( _reconnect_timer );
+    _reconnect_timer = NULL;
     return err;
 }
 
 esp_err_t core2foraws_wifi_init( void )
 {
-    esp_err_t err = _wifi_lifecycle_lock();
+    esp_err_t err = core2foraws_wifi_priv_lock();
     if( err != ESP_OK ) return err;
-    err = _core2foraws_wifi_init_locked();
-    _wifi_lifecycle_unlock();
+    err = _init_locked();
+    core2foraws_wifi_priv_unlock();
     return err;
 }
 
-static esp_err_t _core2foraws_wifi_start_locked( void )
+static esp_err_t _deinit_locked( void )
 {
-    if ( !_wifi_initialized )
-    {
-        return ESP_ERR_INVALID_STATE;
-    }
-    if (atomic_load(&_scan_only) && atomic_load(&_wifi_started))
-    {
-        esp_err_t stop_err = esp_wifi_stop();
-        if (stop_err != ESP_OK) return stop_err;
-        atomic_store(&_wifi_started, false);
-    }
-    atomic_store(&_scan_only, false);
-    if( atomic_load( &_wifi_started ) )
-    {
-        return ESP_OK;
-    }
+    if( !_initialized ) return ESP_OK;
 
-    /* Configuration for the provisioning manager */
-    network_prov_mgr_config_t config =
-    {
-        .scheme = network_prov_scheme_ble,
-        .scheme_event_handler = NETWORK_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BTDM
-    };
+    _attempt_cancel( ESP_FAIL );
+    core2foraws_wifi_priv_prov_stop();
+    core2foraws_wifi_priv_link_yield();
 
-    /* Initialize provisioning manager with the
-     * configuration parameters set above */
-    esp_err_t err = network_prov_mgr_init( config );
-    if ( err != ESP_OK )
-    {
-        return err;
-    }
-
-    bool wifi_is_provisioned = false;
-    /* Let's find out if the device is provisioned */
-    err = network_prov_mgr_is_wifi_provisioned( &wifi_is_provisioned );
-    if ( err != ESP_OK )
-    {
-        network_prov_mgr_deinit();
-        return err;
-    }
-
-    if ( _service_name_mutex == NULL )
-    {
-        _service_name_mutex = xSemaphoreCreateMutex();
-        if ( _service_name_mutex == NULL )
-        {
-            network_prov_mgr_deinit();
-            return ESP_ERR_NO_MEM;
-        }
-    }
-
-    err = _device_service_name_set();
-    if ( err != ESP_OK )
-    {
-        network_prov_mgr_deinit();
-        return err;
-    }
-    ESP_LOGD( _TAG, "\tService Name: %s", service_name );
-
-    /* If device is not yet provisioned start provisioning service */
-    if ( !wifi_is_provisioned )
-    {
-        ESP_LOGI( _TAG, "\tStarting Wi-Fi provisioning over BLE" );
-
-        network_prov_security_t security = NETWORK_PROV_SECURITY_1;
-
-        const char *service_key = NULL;
-
-        /* This step is only useful when scheme is network_prov_scheme_ble. This will
-         * set a custom 128 bit UUID which will be included in the BLE advertisement
-         * and will correspond to the primary GATT service that provides provisioning
-         * endpoints as GATT characteristics. Each GATT characteristic will be
-         * formed using the primary service UUID as base, with different auto assigned
-         * 12th and 13th bytes (assume counting starts from 0th byte). The client side
-         * applications must identify the endpoints by reading the User Characteristic
-         * Description descriptor (0x2901) for each characteristic, which contains the
-         * endpoint name of the characteristic */
-        uint8_t custom_service_uuid[] = 
-        {
-            /* LSB <---------------------------------------
-             * ---------------------------------------> MSB */
-            0xb4, 0xdf, 0x5a, 0x1c, 0x3f, 0x6b, 0xf4, 0xbf,
-            0xea, 0x4a, 0x82, 0x03, 0x04, 0x90, 0x1a, 0x02,
-        };
-        err = network_prov_scheme_ble_set_service_uuid( custom_service_uuid );
-        if ( err != ESP_OK )
-        {
-            ESP_LOGE( _TAG, "\tFailed to set BLE service UUID: 0x%x", err );
-            network_prov_mgr_deinit();
-            return err;
-        }
-
-        if ( xSemaphoreTake( _service_name_mutex, portMAX_DELAY ) == pdTRUE )
-        {
-            char pop[ PROV_POP_STR_SIZE ];
-            err = _get_pop( pop, sizeof( pop ) );
-            if ( err == ESP_OK )
-            {
-                err = network_prov_mgr_start_provisioning( security, pop, service_name, service_key );
-            }
-            xSemaphoreGive( _service_name_mutex );
-        }
-        else
-        {
-            network_prov_mgr_deinit();
-            return ESP_ERR_TIMEOUT;
-        }
-
-        if ( err != ESP_OK )
-        {
-            network_prov_mgr_deinit();
-            return err;
-        }
-
-        atomic_store( &_provisioning_active, true );
-        atomic_store( &_wifi_started, true );
-
-        /* Print QR code for provisioning */
-        err = _wifi_prov_qr_print();
-        if( err != ESP_OK )
-        {
-            ESP_LOGW( _TAG,
-                      "Provisioning started, but QR generation failed: 0x%x",
-                      err );
-        }
-        return ESP_OK;
-    }
-    else
-    {
-        ESP_LOGI( _TAG, "\tAlready provisioned, starting Wi-Fi STA");
-
-        network_prov_mgr_deinit();
-
-#ifdef CONFIG_CORE2FORAWS_WIFI_RELEASE_BLE_WHEN_PROVISIONED
-        /* Provisioning is skipped for this boot, so the controller's reserved
-         * internal DRAM is dead weight. Released before esp_wifi_start() so
-         * the reclaimed memory is available to the Wi-Fi stack itself. */
-        esp_err_t bt_err = esp_bt_controller_mem_release( ESP_BT_MODE_BTDM );
-        if ( bt_err == ESP_OK )
-        {
-            ESP_LOGI( _TAG, "\tReleased BLE controller memory; BLE is "
-                            "unavailable until the next reboot" );
-        }
-        else if ( bt_err != ESP_ERR_INVALID_STATE )
-        {
-            ESP_LOGW( _TAG, "\tFailed to release BLE controller memory: 0x%x",
-                      bt_err );
-        }
-#endif
-
-        err = esp_wifi_set_mode( WIFI_MODE_STA );
-        if ( err != ESP_OK )
-        {
-            return err;
-        }
-        err = esp_wifi_start();
-        if( err == ESP_OK )
-        {
-            atomic_store( &_wifi_started, true );
-        }
-        return err;
-    }
-}
-
-esp_err_t core2foraws_wifi_start( void )
-{
-    esp_err_t err = _wifi_lifecycle_lock();
-    if( err != ESP_OK ) return err;
-    err = _core2foraws_wifi_start_locked();
-    _wifi_lifecycle_unlock();
-    return err;
-}
-
-esp_err_t core2foraws_wifi_scan(wifi_ap_record_t *records, uint16_t *count)
-{
-    if (records == NULL || count == NULL || *count == 0) return ESP_ERR_INVALID_ARG;
-    esp_err_t err = _wifi_lifecycle_lock();
-    if (err != ESP_OK) return err;
-    if (!_wifi_initialized || atomic_load(&_provisioning_active)) {
-        err = ESP_ERR_INVALID_STATE;
-        goto done;
-    }
-    if (!atomic_load(&_wifi_started)) {
-        atomic_store(&_scan_only, true);
-        err = esp_wifi_set_mode(WIFI_MODE_STA);
-        if (err == ESP_OK) err = esp_wifi_start();
-        if (err != ESP_OK) goto done;
-        atomic_store(&_wifi_started, true);
-    }
-    err = esp_wifi_scan_start(NULL, true);
-    if (err == ESP_OK) err = esp_wifi_scan_get_ap_records(count, records);
-    if (err != ESP_OK) esp_wifi_clear_ap_list();
-done:
-    _wifi_lifecycle_unlock();
-    return err;
-}
-
-static esp_err_t _core2foraws_wifi_deinit_locked( void )
-{
-    if ( !_wifi_initialized )
-    {
-        return ESP_OK;
-    }
-
-    if( atomic_exchange( &_provisioning_active, false ) )
-    {
-        network_prov_mgr_deinit();
-    }
-
-    esp_err_t ret = ESP_OK;
-    esp_err_t err = ESP_OK;
-
-    if( atomic_load( &_wifi_started ) )
-    {
-        err = esp_wifi_stop();
-        if( err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED )
-        {
-            return err;
-        }
-        atomic_store( &_wifi_started, false );
-    }
-
+    esp_err_t err = esp_wifi_stop();
+    if( err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED ) return err;
     err = esp_wifi_deinit();
-    if( err != ESP_OK )
-    {
-        return err;
-    }
+    if( err != ESP_OK ) return err;
 
-    err = esp_event_handler_unregister( IP_EVENT, ESP_EVENT_ANY_ID, &_on_got_ip );
-    if ( err != ESP_OK && ret == ESP_OK ) ret = err;
-    err = esp_event_handler_unregister( WIFI_EVENT, WIFI_EVENT_STA_START, &_on_wifi_start );
-    if ( err != ESP_OK && ret == ESP_OK ) ret = err;
-    err = esp_event_handler_unregister( WIFI_EVENT, WIFI_EVENT_STA_CONNECTED, &_on_wifi_connect );
-    if ( err != ESP_OK && ret == ESP_OK ) ret = err;
-    err = esp_event_handler_unregister( WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED, &_on_wifi_disconnect );
-    if ( err != ESP_OK && ret == ESP_OK ) ret = err;
-    err = esp_event_handler_unregister( NETWORK_PROV_EVENT, ESP_EVENT_ANY_ID, &_on_prov_event_handler );
-    if ( err != ESP_OK && ret == ESP_OK ) ret = err;
+    core2foraws_wifi_priv_prov_deinit();
+    esp_err_t ret = _handlers_unregister( WIFI_HANDLER_COUNT );
+    err = esp_wifi_clear_default_wifi_driver_and_handlers( _netif );
+    if( err != ESP_OK && ret == ESP_OK ) ret = err;
+    esp_netif_destroy( _netif );
+    _netif = NULL;
 
-    if ( _wifi_netif != NULL )
-    {
-        err = esp_wifi_clear_default_wifi_driver_and_handlers( _wifi_netif );
-        if ( err != ESP_OK && ret == ESP_OK ) ret = err;
-        esp_netif_destroy( _wifi_netif );
-        _wifi_netif = NULL;
-    }
-
-    if ( _reconnect_timer != NULL )
-    {
-        ( void )esp_timer_stop( _reconnect_timer );
-        err = esp_timer_delete( _reconnect_timer );
-        if ( err != ESP_OK && ret == ESP_OK ) ret = err;
-        _reconnect_timer = NULL;
-    }
+    err = esp_timer_delete( _reconnect_timer );
+    if( err != ESP_OK && ret == ESP_OK ) ret = err;
+    _reconnect_timer = NULL;
     atomic_store( &_reconnect_failures, 0 );
 
-    if ( wifi_event_group != NULL )
-    {
-        vEventGroupDelete( wifi_event_group );
-        wifi_event_group = NULL;
-    }
-
-    if ( _service_name_mutex != NULL )
-    {
-        vSemaphoreDelete( _service_name_mutex );
-        _service_name_mutex = NULL;
-    }
-
-    _wifi_initialized = false;
+    xEventGroupClearBits( wifi_event_group, WIFI_STA_STARTED_BIT | WIFI_PROVISIONING_BIT );
+    core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_IDLE );
+    _initialized = false;
     return ret;
 }
 
 esp_err_t core2foraws_wifi_deinit( void )
 {
-    esp_err_t err = _wifi_lifecycle_lock();
+    esp_err_t err = core2foraws_wifi_priv_lock();
     if( err != ESP_OK ) return err;
-    err = _core2foraws_wifi_deinit_locked();
-    _wifi_lifecycle_unlock();
+    err = _deinit_locked();
+    core2foraws_wifi_priv_unlock();
     return err;
 }
 
-esp_err_t core2foraws_wifi_disconnect( void )
+static esp_err_t _radio_start_locked( void )
 {
-    return esp_wifi_disconnect();
+    if( _radio_started() ) return ESP_OK;
+
+    esp_err_t err = esp_wifi_start();
+    if( err != ESP_OK ) return err;
+    EventBits_t bits = xEventGroupWaitBits( wifi_event_group, WIFI_STA_STARTED_BIT, pdFALSE, pdTRUE,
+                                            pdMS_TO_TICKS( WIFI_RADIO_START_WAIT_MS ) );
+    return ( bits & WIFI_STA_STARTED_BIT ) != 0 ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
-esp_err_t core2foraws_wifi_connect( void )
+/* The station is free for device-side use: no attempt running and no phone mid-provisioning. */
+static esp_err_t _station_available_locked( void )
 {
-    return esp_wifi_connect();
+    if( !_initialized || atomic_load( &_attempt ) != ATTEMPT_NONE ) return ESP_ERR_INVALID_STATE;
+
+    core2foraws_wifi_prov_state_t prov = core2foraws_wifi_priv_prov_state();
+    if( prov == CORE2FORAWS_WIFI_PROV_PHONE_CONNECTED || prov == CORE2FORAWS_WIFI_PROV_APPLYING )
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return ESP_OK;
 }
 
-esp_err_t core2foraws_wifi_reset( void )
+/* A session still waiting for a phone yields to device-side connection requests. */
+static void _waiting_session_close_locked( void )
 {
-    /* esp_wifi_restore() clears only persistent Wi-Fi configuration. It does
-     * not erase the default NVS partition or unrelated application keys. */
-    return esp_wifi_restore();
+    if( core2foraws_wifi_priv_prov_state() == CORE2FORAWS_WIFI_PROV_WAITING )
+    {
+        core2foraws_wifi_priv_prov_stop();
+    }
 }
 
-static esp_err_t _wifi_prov_str_get_locked( char *wifi_prov_str )
+static void _link_drop_locked( void )
 {
-    if ( wifi_prov_str == NULL )
+    core2foraws_wifi_priv_link_yield();
+    if( !_radio_started() ) return;
+
+    core2foraws_wifi_state_t state = atomic_load( &_state );
+    if( state == CORE2FORAWS_WIFI_STATE_CONNECTED || state == CORE2FORAWS_WIFI_STATE_CONNECTING )
+    {
+        _station_disconnect_wait();
+    }
+    core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_DISCONNECTED );
+}
+
+esp_err_t core2foraws_wifi_scan( wifi_ap_record_t *records, uint16_t *count )
+{
+    if( records == NULL || count == NULL || *count == 0 ) return ESP_ERR_INVALID_ARG;
+
+    esp_err_t err = core2foraws_wifi_priv_lock();
+    if( err != ESP_OK ) return err;
+    err = _station_available_locked();
+    if( err == ESP_OK ) err = _radio_start_locked();
+    if( err == ESP_OK )
+    {
+        err = esp_wifi_scan_start( NULL, true );
+        if( err == ESP_OK ) err = esp_wifi_scan_get_ap_records( count, records );
+        if( err != ESP_OK ) esp_wifi_clear_ap_list();
+    }
+    core2foraws_wifi_priv_unlock();
+    return err;
+}
+
+static esp_err_t _attempt_start_locked( const char *ssid, size_t ssid_len,
+                                        const char *password, size_t pass_len )
+{
+    esp_err_t err = _station_available_locked();
+    if( err != ESP_OK ) return err;
+    _waiting_session_close_locked();
+
+    err = _radio_start_locked();
+    if( err == ESP_OK ) err = esp_wifi_get_config( WIFI_IF_STA, &_previous );
+    if( err != ESP_OK ) return err;
+
+    _link_drop_locked();
+
+    wifi_config_t config = { 0 };
+    memcpy( config.sta.ssid, ssid, ssid_len );
+    memcpy( config.sta.password, password, pass_len );
+    config.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    config.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+    config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
+    err = esp_wifi_set_config( WIFI_IF_STA, &config );
+    memset( &config, 0, sizeof( config ) );
+    if( err != ESP_OK )
+    {
+        memset( &_previous, 0, sizeof( _previous ) );
+        return err;
+    }
+
+    atomic_store( &_attempt_failures, 0 );
+    xEventGroupClearBits( wifi_event_group, WIFI_ATTEMPT_DONE_BIT );
+    core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_CONNECTING );
+    atomic_store( &_attempt, ATTEMPT_ACTIVE );
+
+    err = esp_wifi_connect();
+    if( err != ESP_OK && _attempt_claim() ) _attempt_finish( err );
+    return err;
+}
+
+static esp_err_t _attempt_wait( uint32_t timeout_ms )
+{
+    EventBits_t bits = xEventGroupWaitBits( wifi_event_group, WIFI_ATTEMPT_DONE_BIT, pdFALSE, pdTRUE,
+                                            pdMS_TO_TICKS( timeout_ms ) );
+    if( ( bits & WIFI_ATTEMPT_DONE_BIT ) == 0 )
+    {
+        if( core2foraws_wifi_priv_lock() == ESP_OK )
+        {
+            _attempt_cancel( ESP_ERR_TIMEOUT );
+            core2foraws_wifi_priv_unlock();
+        }
+        /* Another path may have finished it concurrently; wait for that result */
+        xEventGroupWaitBits( wifi_event_group, WIFI_ATTEMPT_DONE_BIT, pdFALSE, pdTRUE,
+                             pdMS_TO_TICKS( WIFI_LOCK_TIMEOUT_MS ) );
+    }
+
+    if( atomic_load( &_state ) == CORE2FORAWS_WIFI_STATE_CONNECTED ) return ESP_OK;
+    esp_err_t err = atomic_load( &_last_error );
+    return err != ESP_OK ? err : ESP_FAIL;
+}
+
+esp_err_t core2foraws_wifi_connect( const char *ssid, const char *password, uint32_t timeout_ms )
+{
+    if( password == NULL ) password = "";
+    size_t ssid_len = ssid != NULL ? strnlen( ssid, MAX_SSID_LEN + 1 ) : 0;
+    size_t pass_len = strnlen( password, MAX_PASSPHRASE_LEN + 1 );
+    if( ssid_len == 0 || ssid_len > MAX_SSID_LEN || pass_len > MAX_PASSPHRASE_LEN )
     {
         return ESP_ERR_INVALID_ARG;
     }
 
-    if ( _service_name_mutex == NULL )
-    {
-        return ESP_ERR_INVALID_STATE;
-    }
+    esp_err_t err = core2foraws_wifi_priv_lock();
+    if( err != ESP_OK ) return err;
+    err = _attempt_start_locked( ssid, ssid_len, password, pass_len );
+    core2foraws_wifi_priv_unlock();
 
-    int err = -1;
-    if ( xSemaphoreTake( _service_name_mutex, pdMS_TO_TICKS( 40 ) ) == pdTRUE )
-    {
-        char pop[ PROV_POP_STR_SIZE ];
-        esp_err_t pop_err = _get_pop( pop, sizeof( pop ) );
-        if ( pop_err == ESP_OK )
-        {
-            err = snprintf( wifi_prov_str, WIFI_PROV_STR_LEN, "{\"ver\":\"%s\",\"name\":\"%s\"" \
-                        ",\"pop\":\"%s\",\"transport\":\"%s\"}",
-                        PROV_QR_VERSION, service_name, pop, PROV_TRANSPORT );
-        }
-        xSemaphoreGive( _service_name_mutex );
-
-        if ( err > 0 )
-        {
-            ESP_LOGD( _TAG, "Provisioning string generated (%d bytes)", err );
-            err = 0;
-        }
-        else
-            ESP_LOGE( _TAG, "\tFailed to write provisioning string." );
-    }
-
-    return core2foraws_common_error( err );
+    if( err != ESP_OK || timeout_ms == 0 ) return err;
+    return _attempt_wait( timeout_ms );
 }
 
-esp_err_t core2foraws_wifi_prov_str_get( char *wifi_prov_str )
+static esp_err_t _reconnect_start_locked( void )
 {
-    if( wifi_prov_str == NULL ) return ESP_ERR_INVALID_ARG;
-    wifi_prov_str[ 0 ] = '\0';
-    esp_err_t err = _wifi_lifecycle_lock();
+    esp_err_t err = _station_available_locked();
     if( err != ESP_OK ) return err;
-    err = _wifi_prov_str_get_locked( wifi_prov_str );
-    _wifi_lifecycle_unlock();
+
+    wifi_config_t saved;
+    err = esp_wifi_get_config( WIFI_IF_STA, &saved );
+    bool has_saved = err == ESP_OK && saved.sta.ssid[ 0 ] != '\0';
+    memset( &saved, 0, sizeof( saved ) );
+    if( err != ESP_OK ) return err;
+    if( !has_saved ) return ESP_ERR_NOT_FOUND;
+
+    _waiting_session_close_locked();
+    err = _radio_start_locked();
+    if( err != ESP_OK ) return err;
+    if( atomic_load( &_state ) == CORE2FORAWS_WIFI_STATE_CONNECTED ) return ESP_OK;
+
+    atomic_store( &_reconnect_failures, 0 );
+    atomic_store( &_auto_reconnect, true );
+    core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_CONNECTING );
+    err = esp_wifi_connect();
+    if( err != ESP_OK )
+    {
+        core2foraws_wifi_priv_link_yield();
+        core2foraws_wifi_priv_link_state_set( CORE2FORAWS_WIFI_STATE_DISCONNECTED );
+    }
     return err;
+}
+
+esp_err_t core2foraws_wifi_reconnect( uint32_t timeout_ms )
+{
+    esp_err_t err = core2foraws_wifi_priv_lock();
+    if( err != ESP_OK ) return err;
+    err = _reconnect_start_locked();
+    core2foraws_wifi_priv_unlock();
+    if( err != ESP_OK || timeout_ms == 0 ) return err;
+
+    EventBits_t bits = xEventGroupWaitBits( wifi_event_group,
+                                            WIFI_CONNECTED_BIT | WIFI_DISCONNECTED_BIT,
+                                            pdFALSE, pdFALSE, pdMS_TO_TICKS( timeout_ms ) );
+    if( bits & WIFI_CONNECTED_BIT ) return ESP_OK;
+    if( bits & WIFI_DISCONNECTED_BIT )
+    {
+        err = atomic_load( &_last_error );
+        return err != ESP_OK ? err : ESP_FAIL;
+    }
+    return ESP_ERR_TIMEOUT;
+}
+
+esp_err_t core2foraws_wifi_disconnect( void )
+{
+    esp_err_t err = core2foraws_wifi_priv_lock();
+    if( err != ESP_OK ) return err;
+    if( !_initialized )
+    {
+        err = ESP_ERR_INVALID_STATE;
+    }
+    else
+    {
+        _attempt_cancel( ESP_FAIL );
+        _link_drop_locked();
+    }
+    core2foraws_wifi_priv_unlock();
+    return err;
+}
+
+esp_err_t core2foraws_wifi_forget( void )
+{
+    esp_err_t err = core2foraws_wifi_priv_lock();
+    if( err != ESP_OK ) return err;
+
+    core2foraws_wifi_prov_state_t prov = core2foraws_wifi_priv_prov_state();
+    if( !_initialized || prov == CORE2FORAWS_WIFI_PROV_PHONE_CONNECTED ||
+        prov == CORE2FORAWS_WIFI_PROV_APPLYING )
+    {
+        err = ESP_ERR_INVALID_STATE;
+    }
+    else
+    {
+        _attempt_cancel( ESP_FAIL );
+        _link_drop_locked();
+        wifi_config_t empty = { 0 };
+        err = esp_wifi_set_config( WIFI_IF_STA, &empty );
+    }
+    core2foraws_wifi_priv_unlock();
+    return err;
+}
+
+esp_err_t core2foraws_wifi_saved_ssid_get( char ssid[ MAX_SSID_LEN + 1 ] )
+{
+    if( ssid == NULL ) return ESP_ERR_INVALID_ARG;
+    ssid[ 0 ] = '\0';
+
+    esp_err_t err = core2foraws_wifi_priv_lock();
+    if( err != ESP_OK ) return err;
+    if( !_initialized )
+    {
+        err = ESP_ERR_INVALID_STATE;
+    }
+    else
+    {
+        wifi_config_t config;
+        err = esp_wifi_get_config( WIFI_IF_STA, &config );
+        if( err == ESP_OK )
+        {
+            size_t len = strnlen( ( const char * )config.sta.ssid, MAX_SSID_LEN );
+            memcpy( ssid, config.sta.ssid, len );
+            ssid[ len ] = '\0';
+            if( len == 0 ) err = ESP_ERR_NOT_FOUND;
+        }
+        memset( &config, 0, sizeof( config ) );
+    }
+    core2foraws_wifi_priv_unlock();
+    return err;
+}
+
+core2foraws_wifi_state_t core2foraws_wifi_state_get( void )
+{
+    return ( core2foraws_wifi_state_t )atomic_load( &_state );
+}
+
+esp_err_t core2foraws_wifi_last_error_get( void )
+{
+    return atomic_load( &_last_error );
 }

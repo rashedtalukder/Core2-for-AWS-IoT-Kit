@@ -62,7 +62,7 @@ Building or running the host tests never flashes the device.
 The smoke image enables the factory hardware modules. It checks repeated BSP init,
 sensor and secure-element serial reads, invalidated external-I2C handles, 20
 audio mode cycles using silent playback, forced SPI contention, display teardown
-timeout recovery, three display reinitializations, Wi-Fi start, 1,000 shared-I2C
+timeout recovery, three display reinitializations, Wi-Fi reconnect or provisioning start, 1,000 shared-I2C
 iterations, concurrent Wi-Fi lifecycle/getter calls, and heap integrity. It also
 tests SD/NVS/display sharing and reversible peripheral-power controls. Only this
 test deliberately holds SPI while

@@ -1,6 +1,6 @@
 
 /*
- * Core2 for AWS IoT Kit BSP v2.1.0
+ * Core2 for AWS IoT Kit BSP v3.0.0
  * Copyright (C) 2026 Rashed Talukder.  All Rights Reserved.
  *
  * SPDX-License-Identifier: Apache-2.0

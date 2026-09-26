@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 PROJECT_NAME           = "Core2 for AWS IoT Kit BSP"
-PROJECT_NUMBER         = 2.1.0
+PROJECT_NUMBER         = 3.0.0
 OUTPUT_DIRECTORY       = generated-docs
 INPUT                  = include lib docs tests/README.md README.md
 FILE_PATTERNS          = *.h *.md
