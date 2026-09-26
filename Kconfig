@@ -1,0 +1,137 @@
+# SPDX-FileCopyrightText: 2026 Rashed Talukder
+# SPDX-License-Identifier: Apache-2.0
+
+menu "Core2 for AWS hardware features"
+    config SOFTWARE_BSP_SUPPORT
+        bool "Enable Board Support Package APIs"
+        default y
+        help
+          Enable the Core2 for AWS BSP. This is required for all other features.
+
+    config SOFTWARE_AUDIO_SUPPORT
+        bool "Audio (Speaker & Microphone)"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable audio support including speaker and microphone drivers.
+
+    config CORE2FORAWS_AUDIO_DMA_DESCRIPTORS
+        int "Audio I2S DMA descriptor count"
+        depends on SOFTWARE_AUDIO_SUPPORT
+        range 2 32
+        default 4
+        help
+          Number of I2S DMA buffers for the speaker and microphone. Total
+          buffered audio is descriptors x frames / sample rate; the default
+          4 x 128 frames holds about 11.6 ms at 44.1 kHz. If the writing task
+          is preempted for longer, the speaker underruns and clicks. Each
+          extra descriptor costs frames x 4 bytes of internal DMA-capable
+          DRAM while audio is enabled.
+
+    config CORE2FORAWS_AUDIO_DMA_FRAMES
+        int "Audio I2S DMA frames per descriptor"
+        depends on SOFTWARE_AUDIO_SUPPORT
+        range 8 1023
+        default 128
+        help
+          Frames in each I2S DMA buffer. One buffer must stay within the
+          4092-byte DMA descriptor limit, so frames x 4 bytes (16-bit stereo
+          speaker frames) must not exceed 4092. Larger buffers add latency
+          but tolerate longer scheduling gaps.
+
+    config SOFTWARE_CRYPTO_SUPPORT
+        bool "Cryptographic Encryption"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable ATECC608 secure element support for cryptographic operations.
+
+    config SOFTWARE_DISPLAY_SUPPORT
+        bool "Display"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable ILI9342C display and FT6336 touch controller support.
+    rsource "lib/display/Kconfig"
+
+    config SOFTWARE_BUTTON_SUPPORT
+        bool "Touch Buttons"
+        depends on SOFTWARE_DISPLAY_SUPPORT
+        default y
+        help
+          Enable virtual touch button support on the display.
+    rsource "lib/button/Kconfig"
+
+    config SOFTWARE_MOTION_SUPPORT
+        bool "6-Axis Motion"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable MPU6886 6-axis IMU with temperature sensor support.
+
+    config SOFTWARE_RTC_SUPPORT
+        bool "Real Time Clock"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable BM8563 real-time clock support.
+
+    config TIME_ZONE
+        string "Time Zone"
+        default "PST8PDT"
+        depends on SOFTWARE_RTC_SUPPORT
+        help
+            Time zone string in POSIX format (e.g., "PST8PDT", "EST5EDT", "CST6CDT", "MST7MDT")
+            PST8PDT automatically handles daylight saving time transitions.
+
+    config SOFTWARE_RGB_LED_SUPPORT
+        bool "RGB LEDs"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable SK6812 RGB LED strip control on sides of device.
+
+    config SOFTWARE_SDCARD_SUPPORT
+        bool "SD Card"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable SD card support via SPI interface.
+
+    config SOFTWARE_EXPANSION_PORTS_SUPPORT
+        bool "Expansion Ports A, B, C"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable expansion port GPIO and I2C access.
+        rsource "lib/expports/Kconfig"
+
+    config SOFTWARE_WIFI_SUPPORT
+        bool "Wi-Fi Helper"
+        depends on SOFTWARE_BSP_SUPPORT
+        default y
+        help
+          Enable Wi-Fi connection helper utilities.
+
+    config CORE2FORAWS_WIFI_RELEASE_BLE_WHEN_PROVISIONED
+        bool "Release BLE controller memory when already provisioned"
+        depends on SOFTWARE_WIFI_SUPPORT && BT_ENABLED
+        default n
+        help
+          When credentials are already stored, BLE provisioning is skipped for
+          the whole boot, yet the Bluetooth controller still holds its reserved
+          internal DRAM. Enabling this releases that memory before Wi-Fi
+          starts, typically reclaiming tens of KB of internal DRAM — the
+          largest single lever available to an application that needs headroom
+          for the LVGL draw buffers.
+
+          Once released, BLE cannot be used again until the next reboot. Leave
+          this disabled if your application uses BLE for anything other than
+          provisioning, or if it calls core2foraws_wifi_reset() and expects to
+          re-enter provisioning without restarting.
+
+          When provisioning does run, BLE memory is already freed afterwards by
+          the provisioning manager's FREE_BTDM scheme handler; this option only
+          covers the already-provisioned path.
+
+endmenu

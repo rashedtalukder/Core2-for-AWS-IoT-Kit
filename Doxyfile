@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Rashed Talukder
+# SPDX-License-Identifier: Apache-2.0
+
+PROJECT_NAME           = "Core2 for AWS IoT Kit BSP"
+PROJECT_NUMBER         = 2.1.0
+OUTPUT_DIRECTORY       = generated-docs
+INPUT                  = include lib docs tests/README.md README.md
+FILE_PATTERNS          = *.h *.md
+EXCLUDE_PATTERNS       = */datasheet/*
+RECURSIVE              = YES
+USE_MDFILE_AS_MAINPAGE = README.md
+EXTRACT_ALL            = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = NO
