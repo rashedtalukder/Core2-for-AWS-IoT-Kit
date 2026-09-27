@@ -38,8 +38,6 @@ Using SSH:
 git clone -b BSP-dev git@github.com:m5stack/Core2-for-AWS-IoT-Kit.git
 ```
 
-**Note:** This repository no longer uses Git submodules. All third-party driver code (AXP192 PMU, MPU6886 IMU) is included directly in the BSP source tree.
-
 **Windows users:** If the repository or any project consuming it contains symbolic links, set `core.symlinks true` (`git config --global core.symlinks true`) and either enable [Developer Mode](https://docs.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development) or run git commands from an elevated console.
 
 ## Usage

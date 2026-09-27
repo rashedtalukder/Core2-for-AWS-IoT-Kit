@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Rashed Talukder
+# SPDX-FileCopyrightText: 2022 Rashed Talukder
 # SPDX-License-Identifier: Apache-2.0
 
 dependencies:
@@ -24,3 +24,4 @@ dependencies:
     version: "2.1.0"
     public: true
 version: "3.0.0"
+license: "Apache-2.0"

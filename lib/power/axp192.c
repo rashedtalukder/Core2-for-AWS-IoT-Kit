@@ -3,7 +3,7 @@
  *
  * Written from scratch based on the AXP192 datasheet.
  * No third-party source code was referenced or copied.
- * Copyright (C) 2026 Rashed Talukder.
+ * Copyright (C) 2022 Rashed Talukder.
  *
  * ADC sensitivity values used in this file (from AXP192 datasheet §6):
  *   ACIN / VBUS voltage : 1.7  mV / LSB   (12-bit, registers 0x56/0x5A)

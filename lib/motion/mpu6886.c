@@ -3,7 +3,7 @@
  *
  * Written from scratch based on the InvenSense MPU-6886 Product Specification (rev. 1.2).
  * No third-party source code was referenced or copied.
- * Copyright (C) 2026 Rashed Talukder.
+ * Copyright (C) 2022 Rashed Talukder.
  *
  * SPDX-License-Identifier: Apache-2.0
  */

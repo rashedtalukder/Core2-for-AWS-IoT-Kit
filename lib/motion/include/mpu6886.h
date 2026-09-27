@@ -3,7 +3,7 @@
  *
  * Written from scratch based on the InvenSense MPU-6886 Product Specification (rev. 1.2).
  * No third-party source code was referenced or copied.
- * Copyright (C) 2026 Rashed Talukder.
+ * Copyright (C) 2022 Rashed Talukder.
  *
  * Hardware connections (from schema.yml for Core2 for AWS IoT Kit):
  *   - Internal I²C bus: SDA=GPIO21, SCL=GPIO22; the device is clocked at
