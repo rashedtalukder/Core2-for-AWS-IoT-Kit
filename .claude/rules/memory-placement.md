@@ -19,10 +19,11 @@ internal, DMA-capable RAM. In [lib/display/core2foraws_display.c](../../lib/disp
 the `lvgl_port_display_cfg_t` flags must remain:
 
 ```c
+.color_format = LV_COLOR_FORMAT_RGB565_SWAPPED,
 .flags = {
     .buff_dma    = true,    /* DMA-capable internal RAM */
     .buff_spiram = false,   /* never PSRAM */
-    .swap_bytes  = true,
+    .swap_bytes  = false,   /* LVGL renders big-endian RGB565 directly */
 },
 ```
 

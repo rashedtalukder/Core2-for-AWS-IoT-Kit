@@ -704,6 +704,6 @@ DMA-driven display flush off core 0, where the Wi-Fi stack and the IDF event
 loop run by default, avoiding scheduling contention that shows up as dropped
 frames. Keep this pinning if camera or other CPU-intensive work is added.
 
-## 40. `swap_bytes = true` is already correct for LVGL 9 + SPI ILI9341
+## 40. `LV_COLOR_FORMAT_RGB565_SWAPPED` is used for LVGL 9 + SPI ILI9342C/E
 
-The Core2 for AWS display driver already sets `.flags.swap_bytes = true` in `lvgl_port_display_cfg_t`. The standard BSP conditionally sets `swap_bytes = (BSP_LCD_BIGENDIAN ? true : false)`. Both result in `true` for the ILI9341 over SPI on this platform. No change needed — this is confirmation the current setting is correct.
+[lib/display/core2foraws_display.c](../../lib/display/core2foraws_display.c) sets `.color_format = LV_COLOR_FORMAT_RGB565_SWAPPED` with `.flags.swap_bytes = false` in `lvgl_port_display_cfg_t`. LVGL renders RGB565 directly in the panel's big-endian byte order, so the BSP's custom flush callback can submit the DMA buffer to `esp_lcd_panel_draw_bitmap()` without a per-pixel byte-swap pass on every flush.
